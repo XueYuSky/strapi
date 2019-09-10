@@ -1,11 +1,12 @@
 // Helpers.
-const { auth, login } = require('../../../test/helpers/auth');
-const waitRestart = require('../../../test/helpers/waitRestart');
-const createRequest = require('../../../test/helpers/request');
+const { registerAndLogin } = require('../../../test/helpers/auth');
+const { createAuthRequest } = require('../../../test/helpers/request');
+const createModelsUtils = require('../../../test/helpers/models');
 const _ = require('lodash');
 
 let rq;
 let graphqlQuery;
+let modelsUtils;
 
 // utils
 const selectFields = doc => _.pick(doc, ['id', 'name']);
@@ -15,21 +16,15 @@ const documentModel = {
     {
       name: 'name',
       params: {
-        appearance: {
-          WYSIWYG: false,
-        },
         multiple: false,
-        type: 'string',
+        type: 'richtext',
       },
     },
     {
       name: 'content',
       params: {
-        appearance: {
-          WYSIWYG: true,
-        },
         multiple: false,
-        type: 'text',
+        type: 'richtext',
       },
     },
   ],
@@ -44,11 +39,8 @@ const labelModel = {
     {
       name: 'name',
       params: {
-        appearance: {
-          WYSIWYG: false,
-        },
         multiple: false,
-        type: 'string',
+        type: 'richtext',
       },
     },
     {
@@ -69,22 +61,8 @@ const labelModel = {
 
 describe('Test Graphql Relations API End to End', () => {
   beforeAll(async () => {
-    await createRequest()({
-      url: '/auth/local/register',
-      method: 'POST',
-      body: auth,
-    }).catch(err => {
-      if (err.error.message.includes('Email is already taken.')) return;
-      throw err;
-    });
-
-    const body = await login();
-
-    rq = createRequest({
-      headers: {
-        Authorization: `Bearer ${body.jwt}`,
-      },
-    });
+    const token = await registerAndLogin();
+    rq = createAuthRequest(token);
 
     graphqlQuery = body => {
       return rq({
@@ -93,32 +71,13 @@ describe('Test Graphql Relations API End to End', () => {
         body,
       });
     };
-  });
 
-  describe('Generate test APIs', () => {
-    beforeEach(() => waitRestart(), 30000);
-    afterAll(() => waitRestart(), 30000);
+    modelsUtils = createModelsUtils({ rq });
 
-    test('Create new document API', async () => {
-      const res = await rq({
-        url: '/content-type-builder/models',
-        method: 'POST',
-        body: documentModel,
-      });
+    await modelsUtils.createModels([documentModel, labelModel]);
+  }, 60000);
 
-      expect(res.statusCode).toBe(200);
-    });
-
-    test('Create new label API', async () => {
-      const res = await rq({
-        url: '/content-type-builder/models',
-        method: 'POST',
-        body: labelModel,
-      });
-
-      expect(res.statusCode).toBe(200);
-    });
-  });
+  afterAll(() => modelsUtils.deleteModels(['document', 'label']), 60000);
 
   describe('Test relations features', () => {
     let data = {
@@ -183,46 +142,49 @@ describe('Test Graphql Relations API End to End', () => {
       data.labels = res.body.data.labels;
     });
 
-    test.each(documentsPayload)('Create document linked to every labels %o', async document => {
-      const res = await graphqlQuery({
-        query: /* GraphQL */ `
-          mutation createDocument($input: createDocumentInput) {
-            createDocument(input: $input) {
-              document {
-                name
-                labels {
-                  id
+    test.each(documentsPayload)(
+      'Create document linked to every labels %o',
+      async document => {
+        const res = await graphqlQuery({
+          query: /* GraphQL */ `
+            mutation createDocument($input: createDocumentInput) {
+              createDocument(input: $input) {
+                document {
                   name
+                  labels {
+                    id
+                    name
+                  }
                 }
               }
             }
-          }
-        `,
-        variables: {
-          input: {
-            data: {
-              ...document,
-              labels: data.labels.map(t => t.id),
+          `,
+          variables: {
+            input: {
+              data: {
+                ...document,
+                labels: data.labels.map(t => t.id),
+              },
             },
           },
-        },
-      });
+        });
 
-      const { body } = res;
+        const { body } = res;
 
-      expect(res.statusCode).toBe(200);
+        expect(res.statusCode).toBe(200);
 
-      expect(body).toMatchObject({
-        data: {
-          createDocument: {
-            document: {
-              ...selectFields(document),
-              labels: expect.arrayContaining(data.labels.map(selectFields)),
+        expect(body).toMatchObject({
+          data: {
+            createDocument: {
+              document: {
+                ...selectFields(document),
+                labels: expect.arrayContaining(data.labels.map(selectFields)),
+              },
             },
           },
-        },
-      });
-    });
+        });
+      }
+    );
 
     test('List documents with labels', async () => {
       const res = await graphqlQuery({
@@ -244,16 +206,15 @@ describe('Test Graphql Relations API End to End', () => {
 
       expect(res.statusCode).toBe(200);
       expect(body).toMatchObject({
-          data: {
-            documents: expect.arrayContaining(
-              data.documents.map(document => ({
-                ...selectFields(document),
-                labels: expect.arrayContaining(data.labels.map(selectFields)),
-              }))
-            ),
-          },
-        }
-      );
+        data: {
+          documents: expect.arrayContaining(
+            data.documents.map(document => ({
+              ...selectFields(document),
+              labels: expect.arrayContaining(data.labels.map(selectFields)),
+            }))
+          ),
+        },
+      });
 
       // assign for later use
       data.documents = res.body.data.documents;
@@ -283,7 +244,9 @@ describe('Test Graphql Relations API End to End', () => {
           labels: expect.arrayContaining(
             data.labels.map(label => ({
               ...selectFields(label),
-              documents: expect.arrayContaining(data.documents.map(selectFields)),
+              documents: expect.arrayContaining(
+                data.documents.map(selectFields)
+              ),
             }))
           ),
         },
@@ -366,6 +329,7 @@ describe('Test Graphql Relations API End to End', () => {
             mutation deleteLabel($input: deleteLabelInput) {
               deleteLabel(input: $input) {
                 label {
+                  id
                   name
                 }
               }
@@ -381,6 +345,15 @@ describe('Test Graphql Relations API End to End', () => {
         });
 
         expect(res.statusCode).toBe(200);
+        expect(res.body).toMatchObject({
+          data: {
+            deleteLabel: {
+              label: {
+                id: label.id,
+              },
+            },
+          },
+        });
       }
 
       const res = await graphqlQuery({
@@ -420,6 +393,7 @@ describe('Test Graphql Relations API End to End', () => {
             mutation deleteDocument($input: deleteDocumentInput) {
               deleteDocument(input: $input) {
                 document {
+                  id
                   name
                 }
               }
@@ -435,30 +409,16 @@ describe('Test Graphql Relations API End to End', () => {
         });
 
         expect(res.statusCode).toBe(200);
+        expect(res.body).toMatchObject({
+          data: {
+            deleteDocument: {
+              document: {
+                id: document.id,
+              },
+            },
+          },
+        });
       }
-    });
-  });
-
-  describe('Delete test APIs', () => {
-    beforeEach(() => waitRestart(), 30000);
-    afterAll(() => waitRestart(), 30000);
-
-    test('Delete label API', async () => {
-      await rq({
-        url: '/content-type-builder/models/document',
-        method: 'DELETE',
-      }).then(res => {
-        expect(res.statusCode).toBe(200);
-      });
-    });
-
-    test('Delete label API', async () => {
-      await rq({
-        url: '/content-type-builder/models/label',
-        method: 'DELETE',
-      }).then(res => {
-        expect(res.statusCode).toBe(200);
-      });
     });
   });
 });

@@ -9,8 +9,15 @@ const utils = require('./utils')();
  * @param {Object} options.populate - An array of paths to populate
  * @param {boolean} options.aggregate - Force aggregate function to use group by feature
  */
-const buildQuery = ({ model, filters = {}, populate = [], aggregate = false } = {}) => {
-  const deepFilters = (filters.where || []).filter(({ field }) => field.split('.').length > 1);
+const buildQuery = ({
+  model,
+  filters = {},
+  populate = [],
+  aggregate = false,
+} = {}) => {
+  const deepFilters = (filters.where || []).filter(
+    ({ field }) => field.split('.').length > 1
+  );
 
   if (deepFilters.length === 0 && aggregate === false) {
     return buildSimpleQuery({ model, filters, populate });
@@ -60,34 +67,35 @@ const buildDeepQuery = ({ model, filters, populate }) => {
 
   // Init the query
   let query = model
-    .aggregate(buildQueryAggregate(model, { paths: _.merge({}, populatePaths, wherePaths) }))
+    .aggregate(
+      buildQueryAggregate(model, {
+        paths: _.merge({}, populatePaths, wherePaths),
+      })
+    )
     .append(buildQueryMatches(model, filters));
-
-  query = applyQueryParams({ query, filters });
 
   return {
     /**
      * Overrides the promise to rehydrate mongoose docs after the aggregation query
      */
     then(...args) {
-      // Hydrate function
-      const hydrateFn = hydrateModel({
-        model,
-        populatedModels: populatePaths,
-      });
-
       return query
-        .then(async result => {
-          const hydratedResults = await Promise.all(result.map(hydrateFn));
+        .append({
+          $project: { _id: true },
+        })
+        .then(results => results.map(el => el._id))
+        .then(ids => {
+          if (ids.length === 0) return [];
 
-          // TODO: run this only when necessary
-          const populatedResults = await model.populate(hydratedResults, [
-            {
-              path: 'related.ref',
-            },
-          ]);
+          const query = model
+            .find({
+              _id: {
+                $in: ids,
+              },
+            })
+            .populate(populate);
 
-          return populatedResults;
+          return applyQueryParams({ query, filters });
         })
         .then(...args);
     },
@@ -98,7 +106,9 @@ const buildDeepQuery = ({ model, filters, populate }) => {
      * Maps to query.count
      */
     count() {
-      return query.count('count').then(results => _.get(results, ['0', 'count'], 0));
+      return query
+        .count('count')
+        .then(results => _.get(results, ['0', 'count'], 0));
     },
 
     /**
@@ -202,7 +212,8 @@ const computePopulatedPaths = ({ model, populate = [], where = [] }) => {
  * }
  * @param {Array<string>} paths - A list of paths to transform
  */
-const pathsToTree = paths => paths.reduce((acc, path) => _.merge(acc, _.set({}, path, {})), {});
+const pathsToTree = paths =>
+  paths.reduce((acc, path) => _.merge(acc, _.set({}, path, {})), {});
 
 /**
  * Builds the aggregations pipeling of the query
@@ -243,16 +254,7 @@ const buildLookup = ({ model, key, paths }) => {
           .concat(buildQueryAggregate(assocModel, { paths })),
       },
     },
-  ].concat(
-    assoc.type === 'model'
-      ? {
-        $unwind: {
-          path: `$${assoc.alias}`,
-          preserveNullAndEmptyArrays: true,
-        },
-      }
-      : []
-  );
+  ];
 };
 
 /**
@@ -314,7 +316,9 @@ const buildLookupMatch = ({ assoc }) => {
     case 'manyToManyMorph':
     case 'oneToManyMorph': {
       return [
-        { $unwind: { path: `$${assoc.via}`, preserveNullAndEmptyArrays: true } },
+        {
+          $unwind: { path: `$${assoc.via}`, preserveNullAndEmptyArrays: true },
+        },
         {
           $match: {
             $expr: {
@@ -422,9 +426,12 @@ const buildWhereClause = ({ field, operator, value }) => {
           $not: new RegExp(val),
         },
       };
+    case 'null': {
+      return value ? { [field]: { $eq: null } } : { [field]: { $ne: null } };
+    }
 
     default:
-      throw new Error(`Unhandled whereClause : ${fullField} ${operator} ${value}`);
+      throw new Error(`Unhandled whereClause : ${field} ${operator} ${value}`);
   }
 };
 
@@ -477,43 +484,7 @@ const getAssociationFromFieldKey = (model, fieldKey) => {
 };
 
 /**
- * Re hydrate mongoose model from lookup data
- * @param {Object} options - Options
- * @param {Object} options.model - Mongoose model
- * @param {Object} options.populatedModels - Population models
- */
-const hydrateModel = ({ model: rootModel, populatedModels }) => async obj => {
-  const toSet = Object.keys(populatedModels).reduce((acc, key) => {
-    const val = _.get(obj, key);
-    if (!val) return acc;
-
-    const assocModel = findModelByPath({ rootModel, path: key });
-
-    if (!assocModel) return acc;
-    const subHydrate = hydrateModel({
-      model: assocModel,
-      populatedModels: populatedModels[key],
-    });
-
-    acc.push({
-      path: key,
-      data: Array.isArray(val) ? Promise.all(val.map(v => subHydrate(v))) : subHydrate(val),
-    });
-
-    return acc;
-  }, []);
-
-  let doc = await rootModel.hydrate(obj);
-
-  for (let setter of toSet) {
-    _.set(doc, setter.path, await setter.data);
-  }
-
-  return doc;
-};
-
-/**
- * Returns a model from a realtion path and a root model
+ * Returns a model from a relation path and a root model
  * @param {Object} options - Options
  * @param {Object} options.rootModel - Mongoose model
  * @param {string} options.path - Relation path

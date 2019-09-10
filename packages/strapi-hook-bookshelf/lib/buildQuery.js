@@ -84,17 +84,17 @@ const buildJoinsAndFilter = (qb, model, whereClauses) => {
 
       qb.leftJoin(
         `${originInfo.model.databaseName}.${assoc.tableCollectionName} AS ${joinTableAlias}`,
-        `${joinTableAlias}.${singular(originInfo.model.globalId.toLowerCase())}_${
-          originInfo.model.attributes[assoc.alias].column
-        }`,
+        `${joinTableAlias}.${singular(
+          destinationInfo.model.attributes[assoc.via].attribute
+        )}_${destinationInfo.model.attributes[assoc.via].column}`,
         `${originInfo.alias}.${originInfo.model.primaryKey}`
       );
 
       qb.leftJoin(
         `${destinationInfo.model.databaseName}.${destinationInfo.model.collectionName} AS ${destinationInfo.alias}`,
-        `${joinTableAlias}.${singular(destinationInfo.model.globalId.toLowerCase())}_${
-          destinationInfo.model.primaryKey
-        }`,
+        `${joinTableAlias}.${singular(
+          originInfo.model.attributes[assoc.alias].attribute
+        )}_${originInfo.model.attributes[assoc.alias].column}`,
         `${destinationInfo.alias}.${destinationInfo.model.primaryKey}`
       );
       return;
@@ -207,7 +207,9 @@ const buildWhereClause = ({ qb, field, operator, value }) => {
   if (Array.isArray(value) && !['in', 'nin'].includes(operator)) {
     return qb.where(subQb => {
       for (let val of value) {
-        subQb.orWhere(q => buildWhereClause({ qb: q, field, operator, value: val }));
+        subQb.orWhere(q =>
+          buildWhereClause({ qb: q, field, operator, value: val })
+        );
       }
     });
   }
@@ -237,6 +239,9 @@ const buildWhereClause = ({ qb, field, operator, value }) => {
       return qb.where(field, 'like', `%${value}%`);
     case 'ncontainss':
       return qb.whereNot(field, 'like', `%${value}%`);
+    case 'null': {
+      return value ? qb.whereNull(field) : qb.whereNotNull(field);
+    }
 
     default:
       throw new Error(`Unhandled whereClause : ${field} ${operator} ${value}`);
@@ -252,6 +257,7 @@ const findModelByAssoc = assoc => {
   return models[assoc.collection || assoc.model];
 };
 
-const findAssoc = (model, key) => model.associations.find(assoc => assoc.alias === key);
+const findAssoc = (model, key) =>
+  model.associations.find(assoc => assoc.alias === key);
 
 module.exports = buildQuery;

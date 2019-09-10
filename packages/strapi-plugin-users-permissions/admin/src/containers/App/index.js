@@ -17,25 +17,33 @@ import HomePage from '../HomePage';
 import NotFoundPage from '../NotFoundPage';
 
 class App extends React.Component {
-  componentDidMount() {
-    if (!this.props.location.pathname.split('/')[3]) {
-      this.props.history.push('/plugins/users-permissions/roles');
-    }
-  }
-
   componentDidUpdate() {
     if (!this.props.location.pathname.split('/')[3]) {
       this.props.history.push('/plugins/users-permissions/roles');
     }
   }
 
+  renderRoute = props => <AuthPage {...this.props} {...props} />;
+
   render() {
     return (
       <div className={pluginId}>
         <Switch>
-          <Route path={`/plugins/${pluginId}/auth/:authType/:id?`} component={AuthPage} exact />
-          <Route path={`/plugins/${pluginId}/:settingType/:actionType/:id?`} component={EditPage} exact />
-          <Route path={`/plugins/${pluginId}/:settingType`} component={HomePage} exact />
+          <Route
+            path={`/plugins/${pluginId}/auth/:authType/:id?`}
+            render={this.renderRoute}
+            exact
+          />
+          <Route
+            path={`/plugins/${pluginId}/:settingType/:actionType/:id?`}
+            component={EditPage}
+            exact
+          />
+          <Route
+            path={`/plugins/${pluginId}/:settingType`}
+            component={HomePage}
+            exact
+          />
           <Route component={NotFoundPage} />
         </Switch>
       </div>
@@ -45,7 +53,6 @@ class App extends React.Component {
 
 App.contextTypes = {
   plugins: PropTypes.object,
-  router: PropTypes.object.isRequired,
   updatePlugin: PropTypes.func,
 };
 

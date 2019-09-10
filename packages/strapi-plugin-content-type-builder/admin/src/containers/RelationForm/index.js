@@ -9,22 +9,28 @@ import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 import { get, isEmpty } from 'lodash';
 
-import Input from 'components/InputsIndex';
+import { InputsIndex as Input } from 'strapi-helper-plugin';
 
 import pluginId from '../../pluginId';
 
 import BodyModal from '../../components/BodyModal';
 import ButtonModalPrimary from '../../components/ButtonModalPrimary';
 import ButtonModalSecondary from '../../components/ButtonModalSecondary';
+import ButtonModalSuccess from '../../components/ButtonModalSuccess';
 import FooterModal from '../../components/FooterModal';
+import FormModal from '../../components/FormModal';
 import HeaderModal from '../../components/HeaderModal';
 import HeaderModalNavContainer from '../../components/HeaderModalNavContainer';
+import HeaderModalTitle from '../../components/HeaderModalTitle';
 import HeaderNavLink from '../../components/HeaderNavLink';
 import WrapperModal from '../../components/WrapperModal';
 
 import NaturePicker from './NaturePicker';
 import RelationWrapper from './RelationWrapper';
 import RelationBox from './RelationBox';
+
+import Icon from '../../assets/icons/icon_type_ct.png';
+import IconGroup from '../../assets/icons/icon_type_groups.png';
 
 import formAdvanced from './advanced.json';
 
@@ -38,19 +44,28 @@ class RelationForm extends React.Component {
   state = { didCheckErrors: false, formErrors: {}, showForm: false };
 
   getFormErrors = () => {
-    const { actionType, alreadyTakenAttributes, attributeToEditName, modifiedData } = this.props;
+    const {
+      actionType,
+      alreadyTakenAttributes,
+      attributeToEditName,
+      modifiedData,
+    } = this.props;
     const formValidations = {
       name: { required: true, unique: true },
       key: { required: true, unique: true },
     };
 
-    const alreadyTakenAttributesUpdated = alreadyTakenAttributes.filter(attribute => {
-      if (actionType === 'edit') {
-        return attribute !== attributeToEditName && attribute !== modifiedData.key;
-      }
+    const alreadyTakenAttributesUpdated = alreadyTakenAttributes.filter(
+      attribute => {
+        if (actionType === 'edit') {
+          return (
+            attribute !== attributeToEditName && attribute !== modifiedData.key
+          );
+        }
 
-      return attribute !== attributeToEditName;
-    });
+        return attribute !== attributeToEditName;
+      }
+    );
 
     let formErrors = {};
 
@@ -81,6 +96,12 @@ class RelationForm extends React.Component {
     return formErrors;
   };
 
+  getIcon = () => {
+    const { featureType } = this.props;
+
+    return featureType === 'model' ? Icon : IconGroup;
+  };
+
   handleClick = model => {
     const { actionType, modelToEditName, onChangeRelationTarget } = this.props;
 
@@ -96,7 +117,8 @@ class RelationForm extends React.Component {
   handleGoTo = to => {
     const { emitEvent } = this.context;
     const { actionType, attributeToEditName, push } = this.props;
-    const attributeName = actionType === 'edit' ? `&attributeName=${attributeToEditName}` : '';
+    const attributeName =
+      actionType === 'edit' ? `&attributeName=${attributeToEditName}` : '';
 
     if (to === 'advanced') {
       emitEvent('didSelectContentTypeFieldSettings');
@@ -126,7 +148,13 @@ class RelationForm extends React.Component {
     const [{ name, source }] = models;
     const target = actionType === 'edit' ? modelToEditName : name;
 
-    initData(target, isUpdatingTemporaryContentType, source, attributeToEditName, actionType === 'edit');
+    initData(
+      target,
+      isUpdatingTemporaryContentType,
+      source,
+      attributeToEditName,
+      actionType === 'edit'
+    );
     this.setState({ showForm: true });
   };
 
@@ -201,7 +229,7 @@ class RelationForm extends React.Component {
 
   renderRelationForm = () => {
     const {
-      modifiedData: { key, name, nature, plugin, target },
+      modifiedData,
       models,
       modelToEditName,
       onChange,
@@ -209,6 +237,8 @@ class RelationForm extends React.Component {
       source,
     } = this.props;
     const { formErrors, didCheckErrors } = this.state;
+
+    const { key, name, nature, plugin, target } = modifiedData;
 
     return (
       <RelationWrapper>
@@ -245,11 +275,18 @@ class RelationForm extends React.Component {
   };
 
   render() {
-    const { actionType, activeTab, attributeToEditName, isOpen } = this.props;
+    const {
+      actionType,
+      activeTab,
+      attributeToEditName,
+      featureName,
+      isOpen,
+    } = this.props;
     const { showForm } = this.state;
-    const titleContent = actionType === 'create' ? 'relation' : attributeToEditName;
     const content =
-      activeTab === 'base' || !activeTab ? this.renderRelationForm() : this.renderAdvancedSettings();
+      activeTab === 'base' || !activeTab
+        ? this.renderRelationForm()
+        : this.renderAdvancedSettings();
 
     return (
       <WrapperModal
@@ -259,25 +296,57 @@ class RelationForm extends React.Component {
         onToggle={this.handleToggle}
       >
         <HeaderModal>
-          <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>
-            <FormattedMessage id={`${pluginId}.popUpForm.${actionType || 'create'}`} />
-            &nbsp;
-            <span style={{ fontStyle: 'italic', textTransform: 'capitalize' }}>{titleContent}</span>
-            &nbsp;
-            <FormattedMessage id={`${pluginId}.popUpForm.field`} />
-          </div>
-          <HeaderModalNavContainer>{NAVLINKS.map(this.renderNavLink)}</HeaderModalNavContainer>
+          <section>
+            <HeaderModalTitle>
+              <img src={this.getIcon()} alt="ct" />
+              <span>{featureName}</span>
+            </HeaderModalTitle>
+          </section>
+          <section>
+            <HeaderModalTitle>
+              {actionType === 'create' ? (
+                <>
+                  <FormattedMessage id={`${pluginId}.popUpForm.create`} />
+                  &nbsp;
+                  <FormattedMessage
+                    id={`${pluginId}.popUpForm.attributes.relation.name`}
+                  />
+                </>
+              ) : (
+                <span>{attributeToEditName}</span>
+              )}
+            </HeaderModalTitle>
+            <div className="settings-tabs">
+              <HeaderModalNavContainer>
+                {NAVLINKS.map(this.renderNavLink)}
+              </HeaderModalNavContainer>
+            </div>
+            <hr />
+          </section>
         </HeaderModal>
         <form onSubmit={this.handleSubmitAndContinue}>
-          <BodyModal>{showForm && content}</BodyModal>
+          <FormModal>
+            <BodyModal>{showForm && content}</BodyModal>
+          </FormModal>
           <FooterModal>
-            <ButtonModalSecondary message={`${pluginId}.form.button.cancel`} onClick={this.handleCancel} />
-            <ButtonModalPrimary message={`${pluginId}.form.button.continue`} type="submit" add />
-            <ButtonModalPrimary
-              message={`${pluginId}.form.button.save`}
-              type="button"
-              onClick={this.handleSubmit}
-            />
+            <section>
+              <ButtonModalPrimary
+                message={`${pluginId}.form.button.add.field`}
+                type="submit"
+                add
+              />
+            </section>
+            <section>
+              <ButtonModalSecondary
+                message={`${pluginId}.form.button.cancel`}
+                onClick={this.handleCancel}
+              />
+              <ButtonModalSuccess
+                message={`${pluginId}.form.button.done`}
+                type="button"
+                onClick={this.handleSubmit}
+              />
+            </section>
           </FooterModal>
         </form>
       </WrapperModal>
@@ -294,6 +363,8 @@ RelationForm.defaultProps = {
   activeTab: 'base',
   alreadyTakenAttributes: [],
   attributeToEditName: '',
+  featureName: null,
+  featureType: 'model',
   isOpen: false,
   isUpdatingTemporaryContentType: false,
   models: [],
@@ -306,6 +377,8 @@ RelationForm.propTypes = {
   activeTab: PropTypes.string,
   alreadyTakenAttributes: PropTypes.array,
   attributeToEditName: PropTypes.string,
+  featureName: PropTypes.string,
+  featureType: PropTypes.string,
   initData: PropTypes.func.isRequired,
   isOpen: PropTypes.bool,
   isUpdatingTemporaryContentType: PropTypes.bool,

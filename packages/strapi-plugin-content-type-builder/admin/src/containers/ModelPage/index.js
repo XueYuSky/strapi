@@ -13,36 +13,35 @@ import { Redirect } from 'react-router-dom';
 import { get, isEqual, pickBy } from 'lodash';
 import { Prompt } from 'react-router';
 
-import Button from 'components/Button';
-import EmptyAttributesBlock from 'components/EmptyAttributesBlock';
-import PluginHeader from 'components/PluginHeader';
-import PopUpWarning from 'components/PopUpWarning';
-import { routerPropTypes } from 'commonPropTypes';
-
-import getQueryParameters from 'utils/getQueryParameters';
+import {
+  Button,
+  EmptyAttributesBlock,
+  List,
+  ListHeader,
+  ListTitle,
+  ListWrapper,
+  PopUpWarning,
+  TrashButton,
+  routerPropTypes,
+  getQueryParameters,
+} from 'strapi-helper-plugin';
 
 import pluginId from '../../pluginId';
 
-import AttributeLi from '../../components/AttributeLi';
-import Block from '../../components/Block';
-import Flex from '../../components/Flex';
-import LeftMenu from '../../components/LeftMenu';
-import LeftMenuSection from '../../components/LeftMenuSection';
-import LeftMenuSectionTitle from '../../components/LeftMenuSectionTitle';
-import LeftMenuLink from '../../components/LeftMenuLink';
-import ListTitle from '../../components/ListTitle';
-import Ul from '../../components/Ul';
+import ListRowCollapse from '../../components/ListRowCollapse';
 
 import AttributeForm from '../AttributeForm';
 import AttributesModalPicker from '../AttributesPickerModal';
-import ModelForm from '../ModelForm';
 import RelationForm from '../RelationForm';
+import ViewContainer from '../ViewContainer';
 
 import {
   addAttributeToExistingContentType,
   addAttributeToTempContentType,
   clearTemporaryAttribute,
+  deleteModel,
   deleteModelAttribute,
+  deleteTemporaryModel,
   onChangeAttribute,
   resetEditExistingContentType,
   resetEditTempContentType,
@@ -50,16 +49,19 @@ import {
   submitTempContentType,
 } from '../App/actions';
 
-import CustomLink from './CustomLink';
-
 import styles from './styles.scss';
-import DocumentationSection from './DocumentationSection';
 
 /* eslint-disable react/sort-comp */
 /* eslint-disable no-extra-boolean-cast */
 export class ModelPage extends React.Component {
   // eslint-disable-line react/prefer-stateless-function
-  state = { attrToDelete: null, removePrompt: false, showWarning: false };
+  state = {
+    attrToDelete: null,
+    removePrompt: false,
+    showDeleteAttrWarning: false,
+    showDeleteWarning: false,
+  };
+  featureType = 'model';
 
   componentDidMount() {
     const { setTemporaryAttribute } = this.props;
@@ -72,7 +74,7 @@ export class ModelPage extends React.Component {
       setTemporaryAttribute(
         this.getAttributeName(),
         this.isUpdatingTemporaryContentType(),
-        this.getModelName(),
+        this.getModelName()
       );
     }
   }
@@ -86,7 +88,10 @@ export class ModelPage extends React.Component {
       resetEditExistingContentType,
     } = prevProps;
 
-    if (!this.isUpdatingTemporaryContentType(modelName) && modelName !== this.props.match.params.modelName) {
+    if (
+      !this.isUpdatingTemporaryContentType(modelName) &&
+      modelName !== this.props.match.params.modelName
+    ) {
       resetEditExistingContentType(modelName);
     }
 
@@ -97,19 +102,24 @@ export class ModelPage extends React.Component {
 
   getActionType = () => getQueryParameters(this.getSearch(), 'actionType');
 
-  getAttributeName = () => getQueryParameters(this.getSearch(), 'attributeName');
+  getAttributeName = () =>
+    getQueryParameters(this.getSearch(), 'attributeName');
 
-  getAttributeType = () => getQueryParameters(this.getSearch(), 'attributeType');
+  getAttributeType = () =>
+    getQueryParameters(this.getSearch(), 'attributeType');
 
-  getFormData = () => {
-    const { modifiedData, newContentType } = this.props;
+  // getFormData = () => {
+  //   const { modifiedData, newContentType } = this.props;
 
-    if (this.getActionType() === 'create' || this.isUpdatingTemporaryContentType()) {
-      return newContentType;
-    }
+  //   if (
+  //     this.getActionType() === 'create' ||
+  //     this.isUpdatingTemporaryContentType()
+  //   ) {
+  //     return newContentType;
+  //   }
 
-    return get(modifiedData, this.getModelName());
-  };
+  //   return get(modifiedData, this.getModelName());
+  // };
 
   getModalType = () => getQueryParameters(this.getSearch(), 'modalType');
 
@@ -125,12 +135,17 @@ export class ModelPage extends React.Component {
 
   getModelAttributes = () => get(this.getModel(), 'attributes', {});
 
-  getModelAttributesLength = () => Object.keys(this.getModelAttributes()).length;
+  getModelAttributesLength = () =>
+    Object.keys(this.getModelAttributes()).length;
 
   getModelDescription = () => {
     const { initialData } = this.props;
 
-    const description = get(initialData, [this.getModelName(), 'description'], null);
+    const description = get(
+      initialData,
+      [this.getModelName(), 'description'],
+      null
+    );
 
     /* istanbul ignore if */
     /* eslint-disable indent */
@@ -139,7 +154,6 @@ export class ModelPage extends React.Component {
       : {
           id: `${pluginId}.modelPage.contentHeader.emptyDescription.description`,
         };
-    /* eslint-enable indent */
   };
 
   getModelName = () => {
@@ -167,7 +181,8 @@ export class ModelPage extends React.Component {
     return relations;
   };
 
-  getModelRelationShipsLength = () => Object.keys(this.getModelRelationShips()).length;
+  getModelRelationShipsLength = () =>
+    Object.keys(this.getModelRelationShips()).length;
 
   getPluginHeaderActions = () => {
     const {
@@ -182,7 +197,10 @@ export class ModelPage extends React.Component {
     /* istanbul ignore if */
     const shouldShowActions = this.isUpdatingTemporaryContentType()
       ? this.getModelAttributesLength() > 0
-      : !isEqual(modifiedData[this.getModelName()], initialData[this.getModelName()]);
+      : !isEqual(
+          modifiedData[this.getModelName()],
+          initialData[this.getModelName()]
+        );
     /* eslint-disable indent */
     const handleSubmit = this.isUpdatingTemporaryContentType()
       ? () => submitTempContentType(newContentType, this.context)
@@ -190,8 +208,10 @@ export class ModelPage extends React.Component {
           submitContentType(
             this.getModelName(),
             get(modifiedData, this.getModelName()),
-            this.context,
-            this.getSource(),
+            Object.assign(this.context, {
+              history: this.props.history,
+            }),
+            this.getSource()
           );
         };
     /* istanbul ignore next */
@@ -242,13 +262,6 @@ export class ModelPage extends React.Component {
     return search;
   };
 
-  getSectionTitle = () => {
-    const base = `${pluginId}.menu.section.contentTypeBuilder.name.`;
-
-    /* istanbul ignore if */
-    return this.getModelsNumber() > 1 ? `${base}plural` : `${base}singular`;
-  };
-
   getSource = () => {
     const {
       match: {
@@ -268,10 +281,21 @@ export class ModelPage extends React.Component {
       history: { push },
       setTemporaryAttribute,
     } = this.props;
-    const attributeType = ['integer', 'biginteger', 'float', 'decimal'].includes(type) ? 'number' : type;
+    const attributeType = [
+      'integer',
+      'biginteger',
+      'float',
+      'decimal',
+    ].includes(type)
+      ? 'number'
+      : type;
 
     if (canOpenModal || this.isUpdatingTemporaryContentType()) {
-      setTemporaryAttribute(attributeName, this.isUpdatingTemporaryContentType(), this.getModelName());
+      setTemporaryAttribute(
+        attributeName,
+        this.isUpdatingTemporaryContentType(),
+        this.getModelName()
+      );
 
       await this.wait();
 
@@ -336,7 +360,7 @@ export class ModelPage extends React.Component {
     const { canOpenModal } = this.props;
 
     if (canOpenModal || this.isUpdatingTemporaryContentType()) {
-      this.setState({ showWarning: true, attrToDelete });
+      this.setState({ showDeleteAttrWarning: true, attrToDelete });
       emitEvent('willDeleteFieldOfContentType');
     } else {
       this.displayNotificationCTNotSaved();
@@ -353,7 +377,19 @@ export class ModelPage extends React.Component {
       : ['modifiedData', this.getModelName(), 'attributes', attrToDelete];
 
     deleteModelAttribute(keys);
-    this.setState({ attrToDelete: null, showWarning: false });
+    this.setState({ attrToDelete: null, showDeleteAttrWarning: false });
+  };
+
+  handleRedirectToGroup = group => {
+    const {
+      history: { push },
+    } = this.props;
+    const { source, uid } = group;
+
+    const base = `/plugins/${pluginId}/groups/${uid}`;
+    const to = source ? `${base}&source=${source}` : base;
+
+    push(to);
   };
 
   handleSubmit = (shouldContinue = false) => {
@@ -367,7 +403,10 @@ export class ModelPage extends React.Component {
     const attributeType = getQueryParameters(search, 'attributeType');
 
     if (this.getAttributeType() === 'relation') {
-      addAttributeRelation(this.isUpdatingTemporaryContentType(), this.getModelName());
+      addAttributeRelation(
+        this.isUpdatingTemporaryContentType(),
+        this.getModelName()
+      );
     } else {
       if (this.isUpdatingTemporaryContentType()) {
         addAttributeToTempContentType(attributeType);
@@ -380,7 +419,7 @@ export class ModelPage extends React.Component {
     push({ search: nextSearch });
   };
 
-  handleSubmitEdit = () => {
+  handleSubmitEdit = (shouldContinue = false) => {
     const {
       history: { push },
       saveEditedAttribute,
@@ -389,19 +428,32 @@ export class ModelPage extends React.Component {
     const attributeName = this.getAttributeName();
 
     if (this.getAttributeType() === 'relation') {
-      saveEditedAttributeRelation(attributeName, this.isUpdatingTemporaryContentType(), this.getModelName());
+      saveEditedAttributeRelation(
+        attributeName,
+        this.isUpdatingTemporaryContentType(),
+        this.getModelName()
+      );
     } else {
-      saveEditedAttribute(attributeName, this.isUpdatingTemporaryContentType(), this.getModelName());
+      saveEditedAttribute(
+        attributeName,
+        this.isUpdatingTemporaryContentType(),
+        this.getModelName()
+      );
     }
 
-    push({ search: '' });
+    const nextSearch = shouldContinue ? 'modalType=chooseAttributes' : '';
+
+    push({ search: nextSearch });
   };
 
   hasModelBeenModified = () => {
     const { initialData, modifiedData } = this.props;
     const currentModel = this.getModelName();
 
-    return !isEqual(initialData[currentModel], modifiedData[currentModel]) && this.getSearch() === '';
+    return (
+      !isEqual(initialData[currentModel], modifiedData[currentModel]) &&
+      this.getSearch() === ''
+    );
   };
 
   isUpdatingTemporaryContentType = (modelName = this.getModelName()) => {
@@ -419,9 +471,16 @@ export class ModelPage extends React.Component {
   setPrompt = () => this.setState({ removePrompt: false });
 
   isTryingToEditAnUnknownAttribute = () => {
-    const hasAttribute = Object.keys(this.getModelAttributes()).indexOf(this.getAttributeName()) !== -1;
+    const hasAttribute =
+      Object.keys(this.getModelAttributes()).indexOf(
+        this.getAttributeName()
+      ) !== -1;
 
-    return this.getActionType() === 'edit' && this.getModalType() === 'attributeForm' && !hasAttribute;
+    return (
+      this.getActionType() === 'edit' &&
+      this.getModalType() === 'attributeForm' &&
+      !hasAttribute
+    );
   };
 
   shouldRedirect = () => {
@@ -433,7 +492,15 @@ export class ModelPage extends React.Component {
     );
   };
 
-  toggleModalWarning = () => this.setState(prevState => ({ showWarning: !prevState.showWarning }));
+  toggleDeleteAttrModalWarning = () =>
+    this.setState(prevState => ({
+      showDeleteAttrWarning: !prevState.showDeleteAttrWarning,
+    }));
+
+  toggleDeleteModalWarning = () =>
+    this.setState(prevState => ({
+      showDeleteWarning: !prevState.showDeleteWarning,
+    }));
 
   wait = async () => {
     this.setState({ removePrompt: true });
@@ -441,70 +508,53 @@ export class ModelPage extends React.Component {
   };
 
   displayNotificationCTNotSaved = () =>
-    strapi.notification.info(`${pluginId}.notification.info.contentType.creating.notSaved`);
+    strapi.notification.info(
+      `${pluginId}.notification.info.contentType.creating.notSaved`
+    );
 
-  renderLinks = () => {
-    const { models } = this.props;
-    const links = models.map(model => {
-      const { isTemporary, name, source } = model;
-      const base = `/plugins/${pluginId}/models/${name}`;
-      const to = source ? `${base}&source=${source}` : base;
-
-      return (
-        <LeftMenuLink
-          key={name}
-          icon="fa fa-caret-square-o-right"
-          isTemporary={isTemporary}
-          name={name}
-          source={source}
-          to={to}
-        />
-      );
-    });
-
-    return links;
-  };
-
-  renderLi = attribute => {
+  renderListRow = attribute => {
+    const { canOpenModal, modifiedDataGroup } = this.props;
     const attributeInfos = get(this.getModelAttributes(), attribute, {});
 
     return (
-      <AttributeLi
-        key={attribute}
+      <ListRowCollapse
+        {...attributeInfos}
+        attributeId={attribute}
+        canOpenModal={canOpenModal}
+        groups={modifiedDataGroup}
         name={attribute}
-        attributeInfos={attributeInfos}
         onClick={this.handleClickEditAttribute}
-        onClickOnTrashIcon={this.handleClickOnTrashIcon}
+        onClickDelete={this.handleClickOnTrashIcon}
+        onClickGoTo={this.handleRedirectToGroup}
+        key={attribute}
       />
     );
   };
 
   render() {
-    const listTitleMessageIdBasePrefix = `${pluginId}.modelPage.contentType.list.title`;
     const {
-      cancelNewContentType,
-      connections,
+      canOpenModal,
       clearTemporaryAttribute,
       clearTemporaryAttributeRelation,
-      createTempContentType,
+      deleteModel,
+      deleteTemporaryModel,
       history: { push },
-      location: { pathname, search },
+      groups,
+      location: { search },
       models,
-      modifiedData,
       onChangeAttribute,
-      onChangeExistingContentTypeMainInfos,
-      onChangeNewContentTypeMainInfos,
       onChangeRelation,
       onChangeRelationNature,
       onChangeRelationTarget,
-      resetExistingContentTypeMainInfos,
-      resetNewContentTypeMainInfos,
       setTemporaryAttributeRelation,
       temporaryAttribute,
       temporaryAttributeRelation,
-      updateTempContentType,
     } = this.props;
-    const { showWarning, removePrompt } = this.state;
+    const {
+      showDeleteAttrWarning,
+      showDeleteWarning,
+      removePrompt,
+    } = this.state;
 
     if (this.shouldRedirect()) {
       const { name, source } = models[0];
@@ -517,96 +567,138 @@ export class ModelPage extends React.Component {
     const settingType = getQueryParameters(search, 'settingType');
     const attributeType = this.getAttributeType();
     const actionType = this.getActionType();
-    const icon = this.getSource() ? null : 'fa fa-pencil';
+
+    const attributesNumber = this.getModelAttributesLength();
+    const relationsNumber = this.getModelRelationShipsLength();
+
+    let title = [
+      {
+        label: `${pluginId}.table.attributes.title.${
+          attributesNumber > 1 ? 'plural' : 'singular'
+        }`,
+        values: { number: attributesNumber },
+      },
+    ];
+
+    if (relationsNumber > 0) {
+      title.push({
+        label: `${pluginId}.table.relations.title.${
+          relationsNumber > 1 ? 'plural' : 'singular'
+        }`,
+        values: { number: relationsNumber },
+      });
+    }
+
+    const buttonProps = {
+      kind: 'secondaryHotlineAdd',
+      label: `${pluginId}.button.attributes.add.another`,
+      onClick: () => this.handleClickOpenModalChooseAttributes(),
+    };
 
     return (
       <div className={styles.modelpage}>
         <FormattedMessage id={`${pluginId}.prompt.content.unsaved`}>
-          {msg => <Prompt when={this.hasModelBeenModified() && !removePrompt} message={msg} />}
+          {msg => (
+            <Prompt
+              when={this.hasModelBeenModified() && !removePrompt}
+              message={msg}
+            />
+          )}
         </FormattedMessage>
-        <div className="container-fluid">
-          <div className="row">
-            <LeftMenu>
-              <LeftMenuSection>
-                <LeftMenuSectionTitle id={this.getSectionTitle()} />
-                <ul>
-                  {this.renderLinks()}
-                  <CustomLink onClick={this.handleClickOpenModalCreateCT} />
-                </ul>
-              </LeftMenuSection>
-              <LeftMenuSection>
-                <LeftMenuSectionTitle id={`${pluginId}.menu.section.documentation.name`} />
-                <DocumentationSection />
-              </LeftMenuSection>
-            </LeftMenu>
-
-            <div className="col-md-9">
-              <div className={styles.componentsContainer}>
-                <PluginHeader
-                  description={this.getModelDescription()}
-                  icon={icon}
-                  title={this.getPluginHeaderTitle()}
-                  actions={this.getPluginHeaderActions()}
-                  onClickIcon={this.handleClickEditModelMainInfos}
-                />
-                {this.getModelAttributesLength() === 0 ? (
-                  <EmptyAttributesBlock
-                    description="content-type-builder.home.emptyAttributes.description"
-                    id="openAddAttr"
-                    label="content-type-builder.button.attributes.add"
-                    onClick={this.handleClickOpenModalChooseAttributes}
-                    title="content-type-builder.home.emptyAttributes.title"
-                  />
-                ) : (
-                  <Block>
-                    <Flex>
-                      <ListTitle>
-                        {this.getModelAttributesLength()}
-                        &nbsp;
-                        <FormattedMessage
-                          id={`${listTitleMessageIdBasePrefix}.${
-                            this.getModelAttributesLength() > 1 ? 'plural' : 'singular'
-                          }`}
-                        />
-                        {this.getModelRelationShipsLength() > 0 && (
-                          <React.Fragment>
-                            &nbsp;
-                            <FormattedMessage id={`${listTitleMessageIdBasePrefix}.including`} />
-                            &nbsp;
-                            {this.getModelRelationShipsLength()}
-                            &nbsp;
-                            <FormattedMessage
-                              id={`${pluginId}.modelPage.contentType.list.relationShipTitle.${
-                                this.getModelRelationShipsLength() > 1 ? 'plural' : 'singular'
-                              }`}
-                            />
-                          </React.Fragment>
-                        )}
-                      </ListTitle>
-                      <div>
-                        <Button
-                          label={`${pluginId}.button.attributes.add`}
-                          onClick={this.handleClickOpenModalChooseAttributes}
-                          secondaryHotlineAdd
-                        />
-                      </div>
-                    </Flex>
-                    <div>
-                      <Ul id="attributesList">{Object.keys(this.getModelAttributes()).map(this.renderLi)}</Ul>
-                    </div>
-                  </Block>
-                )}
+        <ViewContainer
+          {...this.props}
+          featureType={this.featureType}
+          headerTitle={this.getPluginHeaderTitle()}
+          headerDescription={this.getModelDescription()}
+          pluginHeaderActions={this.getPluginHeaderActions()}
+          onClickIcon={this.handleClickEditModelMainInfos}
+        >
+          {attributesNumber === 0 ? (
+            <EmptyAttributesBlock
+              description="content-type-builder.home.emptyAttributes.description"
+              id="openAddAttr"
+              label="content-type-builder.button.attributes.add"
+              onClick={this.handleClickOpenModalChooseAttributes}
+              title="content-type-builder.home.emptyAttributes.title"
+            />
+          ) : (
+            <ListWrapper>
+              <ListHeader
+                button={{
+                  ...buttonProps,
+                  style: {
+                    position: 'absolute',
+                    top: '1.8rem',
+                    right: '10px',
+                    outline: 0,
+                  },
+                }}
+              >
+                <div className="list-header-title">
+                  {title.map(item => {
+                    return (
+                      <FormattedMessage
+                        key={item.label}
+                        id={item.label}
+                        values={item.values}
+                      >
+                        {msg => <ListTitle>{msg}&nbsp;</ListTitle>}
+                      </FormattedMessage>
+                    );
+                  })}
+                </div>
+              </ListHeader>
+              <List>
+                <table>
+                  <tbody>
+                    {Object.keys(this.getModelAttributes()).map(
+                      this.renderListRow
+                    )}
+                  </tbody>
+                </table>
+              </List>
+              <div className="list-button">
+                <Button {...buttonProps} />
               </div>
+            </ListWrapper>
+          )}
+          {!this.getSource() && (
+            <div className="trash-btn-wrapper">
+              <TrashButton
+                onClick={e => {
+                  e.stopPropagation();
+
+                  if (canOpenModal || this.isUpdatingTemporaryContentType()) {
+                    this.toggleDeleteModalWarning(true);
+                  } else {
+                    strapi.notification.info(
+                      `${pluginId}.notification.info.work.notSaved`
+                    );
+                  }
+                }}
+              >
+                <div>
+                  <FormattedMessage id={`${pluginId}.button.delete.title`} />
+                </div>
+                <FormattedMessage id={`${pluginId}.button.delete.label`} />
+              </TrashButton>
             </div>
-          </div>
-        </div>
-        <AttributesModalPicker isOpen={modalType === 'chooseAttributes'} push={push} />
+          )}
+        </ViewContainer>
+
+        <AttributesModalPicker
+          featureName={this.getModelName()}
+          isOpen={modalType === 'chooseAttributes'}
+          push={push}
+        />
         <AttributeForm
           actionType={actionType}
           activeTab={settingType}
           alreadyTakenAttributes={Object.keys(this.getModelAttributes())}
           attributeType={attributeType}
+          attributeOptions={attributeType === 'group' ? groups : null}
           attributeToEditName={this.getAttributeName()}
+          featureName={this.getModelName()}
           isContentTypeTemporary={this.isUpdatingTemporaryContentType()}
           isOpen={modalType === 'attributeForm' && attributeType !== 'relation'}
           modifiedData={temporaryAttribute}
@@ -616,39 +708,13 @@ export class ModelPage extends React.Component {
           onSubmitEdit={this.handleSubmitEdit}
           push={push}
         />
-        <ModelForm
-          actionType={actionType}
-          activeTab={settingType}
-          cancelNewContentType={cancelNewContentType}
-          connections={connections}
-          createTempContentType={createTempContentType}
-          currentData={modifiedData}
-          modifiedData={this.getFormData()}
-          modelToEditName={getQueryParameters(search, 'modelName')}
-          onChangeExistingContentTypeMainInfos={onChangeExistingContentTypeMainInfos}
-          onChangeNewContentTypeMainInfos={onChangeNewContentTypeMainInfos}
-          isOpen={modalType === 'model'}
-          isUpdatingTemporaryContentType={this.isUpdatingTemporaryContentType()}
-          pathname={pathname}
-          push={push}
-          resetExistingContentTypeMainInfos={resetExistingContentTypeMainInfos}
-          resetNewContentTypeMainInfos={resetNewContentTypeMainInfos}
-          updateTempContentType={updateTempContentType}
-        />
-        <PopUpWarning
-          isOpen={showWarning}
-          toggleModal={this.toggleModalWarning}
-          content={{
-            message: `${pluginId}.popUpWarning.bodyMessage.attribute.delete`,
-          }}
-          popUpWarningType="danger"
-          onConfirm={this.handleDeleteAttribute}
-        />
+
         <RelationForm
           actionType={actionType}
           activeTab={settingType}
           alreadyTakenAttributes={Object.keys(this.getModelAttributes())}
           attributeToEditName={this.getAttributeName()}
+          featureName={this.getModelName()}
           initData={setTemporaryAttributeRelation}
           isOpen={modalType === 'attributeForm' && attributeType === 'relation'}
           isUpdatingTemporaryContentType={this.isUpdatingTemporaryContentType()}
@@ -663,6 +729,33 @@ export class ModelPage extends React.Component {
           onSubmitEdit={this.handleSubmitEdit}
           push={push}
           source={this.getSource()}
+        />
+
+        <PopUpWarning
+          isOpen={showDeleteWarning}
+          toggleModal={this.toggleDeleteModalWarning}
+          content={{
+            message: `${pluginId}.popUpWarning.bodyMessage.contentType.delete`,
+          }}
+          type="danger"
+          onConfirm={() => {
+            if (this.isUpdatingTemporaryContentType()) {
+              deleteTemporaryModel();
+            } else {
+              deleteModel(this.getModelName(), this.context);
+            }
+            this.toggleDeleteModalWarning(false);
+          }}
+        />
+
+        <PopUpWarning
+          isOpen={showDeleteAttrWarning}
+          toggleModal={this.toggleDeleteAttrModalWarning}
+          content={{
+            message: `${pluginId}.popUpWarning.bodyMessage.attribute.delete`,
+          }}
+          popUpWarningType="danger"
+          onConfirm={this.handleDeleteAttribute}
         />
       </div>
     );
@@ -691,21 +784,19 @@ ModelPage.propTypes = {
   clearTemporaryAttributeRelation: PropTypes.func.isRequired,
   connections: PropTypes.array,
   createTempContentType: PropTypes.func.isRequired,
+  deleteModel: PropTypes.func.isRequired,
   deleteModelAttribute: PropTypes.func.isRequired,
+  deleteTemporaryModel: PropTypes.func.isRequired,
   initialData: PropTypes.object.isRequired,
   models: PropTypes.array.isRequired,
   modifiedData: PropTypes.object.isRequired,
   newContentType: PropTypes.object.isRequired,
   onChangeAttribute: PropTypes.func.isRequired,
-  onChangeExistingContentTypeMainInfos: PropTypes.func.isRequired,
-  onChangeNewContentTypeMainInfos: PropTypes.func.isRequired,
   onChangeRelation: PropTypes.func.isRequired,
   onChangeRelationNature: PropTypes.func.isRequired,
   onChangeRelationTarget: PropTypes.func.isRequired,
   resetEditExistingContentType: PropTypes.func.isRequired,
   resetEditTempContentType: PropTypes.func.isRequired,
-  resetExistingContentTypeMainInfos: PropTypes.func.isRequired,
-  resetNewContentTypeMainInfos: PropTypes.func.isRequired,
   saveEditedAttribute: PropTypes.func.isRequired,
   saveEditedAttributeRelation: PropTypes.func.isRequired,
   setTemporaryAttribute: PropTypes.func.isRequired,
@@ -714,7 +805,6 @@ ModelPage.propTypes = {
   submitTempContentType: PropTypes.func.isRequired,
   temporaryAttribute: PropTypes.object.isRequired,
   temporaryAttributeRelation: PropTypes.object.isRequired,
-  updateTempContentType: PropTypes.func.isRequired,
   ...routerPropTypes({ params: PropTypes.string }).isRequired,
 };
 
@@ -724,20 +814,22 @@ export function mapDispatchToProps(dispatch) {
       addAttributeToExistingContentType,
       addAttributeToTempContentType,
       clearTemporaryAttribute,
+      deleteModel,
       deleteModelAttribute,
+      deleteTemporaryModel,
       onChangeAttribute,
       resetEditExistingContentType,
       resetEditTempContentType,
       submitContentType,
       submitTempContentType,
     },
-    dispatch,
+    dispatch
   );
 }
 
 const withConnect = connect(
   null,
-  mapDispatchToProps,
+  mapDispatchToProps
 );
 
 export default compose(withConnect)(ModelPage);

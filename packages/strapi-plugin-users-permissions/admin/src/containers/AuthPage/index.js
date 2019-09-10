@@ -14,11 +14,7 @@ import { findIndex, get, isBoolean, isEmpty, map, replace } from 'lodash';
 import cn from 'classnames';
 
 // Design
-import Button from 'components/Button';
-import Input from 'components/InputsIndex';
-
-// Utils
-import auth from 'utils/auth';
+import { auth, Button, InputsIndex as Input } from 'strapi-helper-plugin';
 
 import pluginId from '../../pluginId';
 
@@ -39,20 +35,19 @@ import makeSelectAuthPage from './selectors';
 
 import styles from './styles.scss';
 
-export class AuthPage extends React.Component { // eslint-disable-line react/prefer-stateless-function
+export class AuthPage extends React.Component {
+  // eslint-disable-line react/prefer-stateless-function
   componentDidMount() {
     auth.clearAppStorage();
     this.setForm();
   }
 
   componentDidUpdate(prevProps) {
-    const { 
+    const {
       hideLoginErrorsInput,
-      match: { 
-        params : {
-          authType,
-        },
-      }, 
+      match: {
+        params: { authType },
+      },
       submitSuccess,
     } = this.props;
 
@@ -64,7 +59,7 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
     if (submitSuccess) {
       switch (authType) {
         case 'login':
-        case 'reset-password': 
+        case 'reset-password':
           // Check if we have token to handle redirection to login or admin.
           // Done to prevent redirection to admin after reset password if user should
           // not have access.
@@ -86,46 +81,79 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
   getFormErrors = () => {
     const { formErrors } = this.props;
     return get(formErrors, ['0', 'errors', '0', 'id']);
-  }
+  };
+
+  getLogo = () => {
+    const {
+      assets: { loginLogo },
+    } = this.props;
+
+    return loginLogo || LogoStrapi;
+  };
 
   setForm = () => {
     const {
-      location: {
-        search,
-      },
+      location: { search },
       match: {
-        params: {
-          authType,
-          id,
-        },
+        params: { authType, id },
       },
-      setForm, 
-    } = this.props; 
+      setForm,
+    } = this.props;
     const params = search ? replace(search, '?code=', '') : id;
-    
+
     setForm(authType, params);
-  }
+  };
 
   isAuthType = type => {
-    const { match: { params: { authType } } } = this.props;
+    const {
+      match: {
+        params: { authType },
+      },
+    } = this.props;
     return authType === type;
-  }
-  
-  handleSubmit = (e) => {
+  };
+
+  handleSubmit = e => {
     const { modifiedData, setErrors, submit } = this.props;
     e.preventDefault();
     const formErrors = Object.keys(modifiedData).reduce((acc, key) => {
-      if (isEmpty(get(modifiedData, key)) && !isBoolean(get(modifiedData, key))) {
-        acc.push({ name: key, errors: [{ id: 'components.Input.error.validation.required' }] });
+      if (
+        isEmpty(get(modifiedData, key)) &&
+        !isBoolean(get(modifiedData, key))
+      ) {
+        acc.push({
+          name: key,
+          errors: [{ id: 'components.Input.error.validation.required' }],
+        });
       }
 
-      if (!isEmpty(get(modifiedData, 'password')) && !isEmpty(get(modifiedData, 'confirmPassword')) && findIndex(acc, ['name', 'confirmPassword']) === -1) {
+      if (
+        !isEmpty(get(modifiedData, 'password')) &&
+        !isEmpty(get(modifiedData, 'confirmPassword')) &&
+        findIndex(acc, ['name', 'confirmPassword']) === -1
+      ) {
         if (modifiedData.password.length < 6) {
-          acc.push({ name: 'password', errors: [{ id: 'users-permissions.components.Input.error.password.length' }] });
+          acc.push({
+            name: 'password',
+            errors: [
+              {
+                id: 'users-permissions.components.Input.error.password.length',
+              },
+            ],
+          });
         }
-        
-        if (get(modifiedData, 'password') !== get(modifiedData, 'confirmPassword')) {
-          acc.push({ name: 'confirmPassword', errors: [{ id: 'users-permissions.components.Input.error.password.noMatch' }] });
+
+        if (
+          get(modifiedData, 'password') !== get(modifiedData, 'confirmPassword')
+        ) {
+          acc.push({
+            name: 'confirmPassword',
+            errors: [
+              {
+                id: 'users-permissions.components.Input.error.password.noMatch',
+              },
+            ],
+          });
         }
       }
 
@@ -137,23 +165,35 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
     if (isEmpty(formErrors)) {
       submit(this.context);
     }
-  }
+  };
 
   redirect = path => this.props.history.push(path);
 
   renderButton = () => {
-    const { match: { params: { authType } }, submitSuccess } = this.props;
+    const {
+      match: {
+        params: { authType },
+      },
+      submitSuccess,
+    } = this.props;
 
     if (this.isAuthType('login')) {
       return (
         <div className={cn('col-md-6', styles.loginButton)}>
-          <Button primary label="users-permissions.Auth.form.button.login" type="submit" />
+          <Button
+            primary
+            label="users-permissions.Auth.form.button.login"
+            type="submit"
+          />
         </div>
       );
     }
-    const isEmailForgotSent = this.isAuthType('forgot-password') && submitSuccess;
-    const label = isEmailForgotSent ? 'users-permissions.Auth.form.button.forgot-password.success' : `users-permissions.Auth.form.button.${authType}`;
-  
+    const isEmailForgotSent =
+      this.isAuthType('forgot-password') && submitSuccess;
+    const label = isEmailForgotSent
+      ? 'users-permissions.Auth.form.button.forgot-password.success'
+      : `users-permissions.Auth.form.button.${authType}`;
+
     return (
       <div className={cn('col-md-12', styles.buttonContainer)}>
         <Button
@@ -165,10 +205,15 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
         />
       </div>
     );
-  }
+  };
 
-  renderLogo = () => this.isAuthType('register') && <div className={styles.logoContainer}><img src={LogoStrapi} alt="logo" /></div>;
-  
+  renderLogo = () =>
+    this.isAuthType('register') && (
+      <div className={styles.logoContainer}>
+        <img src={this.getLogo()} alt="logo" />
+      </div>
+    );
+
   renderLink = () => {
     if (this.isAuthType('login')) {
       return (
@@ -178,7 +223,10 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
       );
     }
 
-    if (this.isAuthType('forgot-password') || this.isAuthType('register-success')) {
+    if (
+      this.isAuthType('forgot-password') ||
+      this.isAuthType('register-success')
+    ) {
       return (
         <Link to="/plugins/users-permissions/auth/login">
           <FormattedMessage id="users-permissions.Auth.link.ready" />
@@ -187,37 +235,84 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
     }
 
     return <div />;
-  }
+  };
 
   renderInputs = () => {
-    const { 
+    const {
       didCheckErrors,
       formErrors,
       match: {
-        params: {
-          authType,
-        },
+        params: { authType },
       },
       modifiedData,
       noErrorsDescription,
       onChangeInput,
       submitSuccess,
     } = this.props;
-    
+
     const inputs = get(form, ['form', authType]);
-    const isForgotEmailSent = this.isAuthType('forgot-password') && submitSuccess;
+    const isForgotEmailSent =
+      this.isAuthType('forgot-password') && submitSuccess;
     return map(inputs, (input, key) => {
-      const label = 
-        isForgotEmailSent
-          ? { id: 'users-permissions.Auth.form.forgot-password.email.label.success' } 
-          : get(input, 'label');
-          
+      let label = isForgotEmailSent
+        ? {
+            id:
+              'users-permissions.Auth.form.forgot-password.email.label.success',
+          }
+        : get(input, 'label');
+
+      if (input.name === 'news') {
+        const handleClick = (e, to) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const win = window.open(`https://strapi.io/${to}`, '_blank');
+          win.focus();
+        };
+
+        const terms = (
+          <FormattedMessage
+            id={`${pluginId}.Auth.privacy-policy-agreement.terms`}
+          >
+            {content => (
+              <span
+                style={{ color: '#0097f7', cursor: 'pointer' }}
+                onClick={e => handleClick(e, 'terms')}
+              >
+                {content}
+              </span>
+            )}
+          </FormattedMessage>
+        );
+        const policy = (
+          <FormattedMessage
+            id={`${pluginId}.Auth.privacy-policy-agreement.policy`}
+          >
+            {content => (
+              <span
+                style={{ color: '#0097f7', cursor: 'pointer' }}
+                onClick={e => handleClick(e, 'policy')}
+              >
+                {content}
+              </span>
+            )}
+          </FormattedMessage>
+        );
+
+        label = () => (
+          <FormattedMessage id={input.label.id} values={{ terms, policy }} />
+        );
+      }
+
       return (
         <Input
           autoFocus={key === 0}
           customBootstrapClass={get(input, 'customBootstrapClass')}
           didCheckErrors={didCheckErrors}
-          errors={get(formErrors, [findIndex(formErrors, ['name', input.name]), 'errors'])}
+          errors={get(formErrors, [
+            findIndex(formErrors, ['name', input.name]),
+            'errors',
+          ])}
           key={get(input, 'name')}
           label={label}
           name={get(input, 'name')}
@@ -230,11 +325,14 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
         />
       );
     });
-  }
+  };
 
   render() {
     const { modifiedData, noErrorsDescription, submitSuccess } = this.props;
-    let divStyle = this.isAuthType('register') ? { marginTop: '3.2rem' } : { marginTop: '.9rem' };
+
+    let divStyle = this.isAuthType('register')
+      ? { marginTop: '3.2rem' }
+      : { marginTop: '.9rem' };
 
     if (this.isAuthType('forgot-password') && submitSuccess) {
       divStyle = { marginTop: '.9rem', minHeight: '18.2rem' };
@@ -247,30 +345,36 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
             {this.isAuthType('register') ? (
               <FormattedMessage id="users-permissions.Auth.form.header.register" />
             ) : (
-              <img src={LogoStrapi} alt="logo" />
+              <img src={this.getLogo()} alt="logo" />
             )}
           </div>
           <div className={styles.headerDescription}>
-            {this.isAuthType('register') && <FormattedMessage id="users-permissions.Auth.header.register.description" />}
+            {this.isAuthType('register') && (
+              <FormattedMessage id="users-permissions.Auth.header.register.description" />
+            )}
           </div>
 
           <div
             className={cn(
               styles.formContainer,
-              this.isAuthType('forgot-password') && submitSuccess ? styles.borderedSuccess : styles.bordered,
+              this.isAuthType('forgot-password') && submitSuccess
+                ? styles.borderedSuccess
+                : styles.bordered
             )}
             style={divStyle}
           >
             <form onSubmit={this.handleSubmit}>
               <div className="container-fluid">
-                {noErrorsDescription && !isEmpty(this.getFormErrors())? (
+                {noErrorsDescription && !isEmpty(this.getFormErrors()) ? (
                   <div className={styles.errorsContainer}>
                     <FormattedMessage id={this.getFormErrors()} />
                   </div>
-                ): ''}
+                ) : (
+                  ''
+                )}
                 <div className="row" style={{ textAlign: 'start' }}>
                   {!submitSuccess && this.renderInputs()}
-                  { this.isAuthType('forgot-password') && submitSuccess && (
+                  {this.isAuthType('forgot-password') && submitSuccess && (
                     <div className={styles.forgotSuccess}>
                       <FormattedMessage id="users-permissions.Auth.form.forgot-password.email.label.success" />
                       <br />
@@ -282,9 +386,7 @@ export class AuthPage extends React.Component { // eslint-disable-line react/pre
               </div>
             </form>
           </div>
-          <div className={styles.linkContainer}>
-            {this.renderLink()}
-          </div>
+          <div className={styles.linkContainer}>{this.renderLink()}</div>
         </div>
         {this.renderLogo()}
       </div>
@@ -296,7 +398,12 @@ AuthPage.contextTypes = {
   updatePlugin: PropTypes.func,
 };
 
+AuthPage.defaultProps = {
+  assets: { loginLogo: null },
+};
+
 AuthPage.propTypes = {
+  assets: PropTypes.object,
   didCheckErrors: PropTypes.bool.isRequired,
   formErrors: PropTypes.array.isRequired,
   hideLoginErrorsInput: PropTypes.func.isRequired,
@@ -327,12 +434,19 @@ function mapDispatchToProps(dispatch) {
   );
 }
 
-const withConnect = connect(mapStateToProps, mapDispatchToProps);
-const withReducer = strapi.injectReducer({ key: 'authPage', reducer, pluginId });
-const withSaga = strapi.injectSaga({ key: 'authPage', saga, pluginId });
+const withConnect = connect(
+  mapStateToProps,
+  mapDispatchToProps
+);
+const withReducer = window.strapi.injectReducer({
+  key: 'authPage',
+  reducer,
+  pluginId,
+});
+const withSaga = window.strapi.injectSaga({ key: 'authPage', saga, pluginId });
 
 export default compose(
   withReducer,
   withSaga,
-  withConnect,
+  withConnect
 )(AuthPage);

@@ -4,18 +4,20 @@ import { FormattedMessage } from 'react-intl';
 import mountWithIntl from 'testUtils/mountWithIntl';
 import formatMessagesWithPluginId from 'testUtils/formatMessages';
 
-import Input from 'components/InputsIndex';
+import { InputsIndex as Input } from 'strapi-helper-plugin';
 // This part is needed if you need to test the lifecycle of a container that contains FormattedMessages
 
 import pluginId from '../../../pluginId';
 import pluginTradsEn from '../../../translations/en.json';
 
 import CustomCheckbox from '../../../components/CustomCheckbox';
+import HeaderModalTitle from '../../../components/HeaderModalTitle';
 import AttributeForm from '../index';
 
 const messages = formatMessagesWithPluginId(pluginId, pluginTradsEn);
 const context = { emitEvent: jest.fn() };
-const renderComponent = (props = {}) => mountWithIntl(<AttributeForm {...props} />, messages, context);
+const renderComponent = (props = {}) =>
+  mountWithIntl(<AttributeForm {...props} />, messages, context);
 
 describe('<AttributeForm />', () => {
   let props;
@@ -65,21 +67,27 @@ describe('<AttributeForm />', () => {
   it('should handle the title correctly with the activeTab', () => {
     props.actionType = null;
     props.isOpen = true;
+    props.attributeToEditName = 'test';
 
     wrapper = renderComponent(props);
-
-    const title = wrapper.find(FormattedMessage).at(0);
-
-    expect(title.prop('id')).toContain('create');
-
     wrapper.setProps({ actionType: 'edit' });
+
+    const title = wrapper
+      .find(HeaderModalTitle)
+      .last()
+      .find('span')
+      .last();
+
+    expect(title.text()).toContain('test');
+
+    wrapper.setProps({ actionType: 'create' });
 
     expect(
       wrapper
         .find(FormattedMessage)
         .at(0)
-        .prop('id'),
-    ).toContain('edit');
+        .prop('id')
+    ).toContain('create');
   });
 
   it('should use the defaultProps', () => {
@@ -115,7 +123,21 @@ describe('<AttributeForm />', () => {
 
         const { getFormErrors } = wrapper.instance();
 
-        expect(getFormErrors()).toEqual({ name: [{ id: `${pluginId}.error.validation.required` }] });
+        expect(getFormErrors()).toEqual({
+          name: [{ id: `${pluginId}.error.validation.required` }],
+        });
+      });
+
+      it('should return a unique error if the name begins with a special character', () => {
+        props.modifiedData = { name: '_test' };
+
+        wrapper = renderComponent(props);
+
+        const { getFormErrors } = wrapper.instance();
+
+        expect(getFormErrors()).toEqual({
+          name: [{ id: `${pluginId}.error.validation.regex.name` }],
+        });
       });
 
       it('should return a unique error if the name of the field is already taken', () => {
@@ -126,7 +148,9 @@ describe('<AttributeForm />', () => {
 
         const { getFormErrors } = wrapper.instance();
 
-        expect(getFormErrors()).toEqual({ name: [{ id: `${pluginId}.error.attribute.taken` }] });
+        expect(getFormErrors()).toEqual({
+          name: [{ id: `${pluginId}.error.attribute.taken` }],
+        });
       });
 
       it('should not return a unique error if the use is editing a field', () => {
@@ -139,7 +163,9 @@ describe('<AttributeForm />', () => {
 
         const { getFormErrors } = wrapper.instance();
 
-        expect(getFormErrors()).toEqual({ minLength: [{ id: `${pluginId}.error.validation.required` }] });
+        expect(getFormErrors()).toEqual({
+          minLength: [{ id: `${pluginId}.error.validation.required` }],
+        });
       });
 
       it('should not return a unique error if the use is editing a field', () => {
@@ -189,9 +215,12 @@ describe('<AttributeForm />', () => {
         handleGoTo('advanced');
 
         expect(props.push).toHaveBeenCalledWith({
-          search: 'modalType=attributeForm&attributeType=string&settingType=advanced&actionType=create',
+          search:
+            'modalType=attributeForm&attributeType=string&settingType=advanced&actionType=create',
         });
-        expect(context.emitEvent).toHaveBeenCalledWith('didSelectContentTypeFieldSettings');
+        expect(context.emitEvent).toHaveBeenCalledWith(
+          'didSelectContentTypeFieldSettings'
+        );
       });
     });
 
@@ -281,10 +310,12 @@ describe('<AttributeForm />', () => {
         handleSubmitAndContinue({ preventDefault: jest.fn() });
 
         expect(props.onSubmitEdit).toHaveBeenCalledWith(true);
-        expect(context.emitEvent).toHaveBeenCalledWith('willAddMoreFieldToContentType');
+        expect(context.emitEvent).toHaveBeenCalledWith(
+          'willAddMoreFieldToContentType'
+        );
       });
 
-      it('should not submit if thee form has an error', () => {
+      it('should not submit if the form has an error', () => {
         wrapper = renderComponent(props);
 
         const { handleSubmitAndContinue } = wrapper.instance();
