@@ -1,32 +1,88 @@
 'use strict';
 
-const parseMultipartData = require('./utils/parse-multipart');
+const _ = require('lodash');
+const { parseMultipartData, sanitizeEntity } = require('strapi-utils');
 
-const proto = {
-  parseMultipartData,
+const createSanitizeFn = model => data => {
+  return sanitizeEntity(data, { model: strapi.getModel(model.uid) });
 };
 
 /**
  * default bookshelf controller
  *
  */
-module.exports = ({ service }) => {
-  return Object.assign(Object.create(proto), {
-    /**
-     * expose some utils so the end users can use them
-     */
+module.exports = ({ service, model }) => {
+  if (model.kind === 'singleType') {
+    return createSingleTypeController({ model, service });
+  }
 
+  return createCollectionTypeController({ model, service });
+};
+
+/**
+ * Returns a single type controller to handle default core-api actions
+ */
+const createSingleTypeController = ({ model, service }) => {
+  const sanitize = createSanitizeFn(model);
+
+  return {
+    /**
+     * Retrieve single type content
+     *
+     * @return {Object|Array}
+     */
+    async find(ctx) {
+      const { query } = ctx;
+      const entity = await service.find(query);
+      return sanitize(entity);
+    },
+
+    /**
+     * create or update single type content.
+     *
+     * @return {Object}
+     */
+    async update(ctx) {
+      let entity;
+      if (ctx.is('multipart')) {
+        const { data, files } = parseMultipartData(ctx);
+        entity = await service.createOrUpdate(data, { files });
+      } else {
+        entity = await service.createOrUpdate(ctx.request.body);
+      }
+
+      return sanitize(entity);
+    },
+
+    async delete() {
+      const entity = await service.delete();
+      return sanitize(entity);
+    },
+  };
+};
+
+/**
+ *
+ * Returns a collection type controller to handle default core-api actions
+ */
+const createCollectionTypeController = ({ model, service }) => {
+  const sanitize = createSanitizeFn(model);
+
+  return {
     /**
      * Retrieve records.
      *
      * @return {Object|Array}
      */
-
-    find(ctx) {
-      if (ctx.query._q) {
-        return service.search(ctx.query);
+    async find(ctx) {
+      let entities;
+      if (_.has(ctx.query, '_q')) {
+        entities = await service.search(ctx.query);
+      } else {
+        entities = await service.find(ctx.query);
       }
-      return service.find(ctx.query);
+
+      return sanitize(entities);
     },
 
     /**
@@ -34,9 +90,11 @@ module.exports = ({ service }) => {
      *
      * @return {Object}
      */
+    async findOne(ctx) {
+      const { query, params } = ctx;
+      const entity = await service.findOne({ ...query, id: params.id });
 
-    findOne(ctx) {
-      return service.findOne(ctx.params);
+      return sanitize(entity);
     },
 
     /**
@@ -44,9 +102,8 @@ module.exports = ({ service }) => {
      *
      * @return {Number}
      */
-
     count(ctx) {
-      if (ctx.query._q) {
+      if (_.has(ctx.query, '_q')) {
         return service.countSearch(ctx.query);
       }
       return service.count(ctx.query);
@@ -57,14 +114,16 @@ module.exports = ({ service }) => {
      *
      * @return {Object}
      */
-
-    create(ctx) {
+    async create(ctx) {
+      let entity;
       if (ctx.is('multipart')) {
-        const { data, files } = this.parseMultipartData(ctx);
-        return service.create(data, { files });
+        const { data, files } = parseMultipartData(ctx);
+        entity = await service.create(data, { files });
+      } else {
+        entity = await service.create(ctx.request.body);
       }
 
-      return service.create(ctx.request.body);
+      return sanitize(entity);
     },
 
     /**
@@ -72,14 +131,16 @@ module.exports = ({ service }) => {
      *
      * @return {Object}
      */
-
-    update(ctx) {
+    async update(ctx) {
+      let entity;
       if (ctx.is('multipart')) {
-        const { data, files } = this.parseMultipartData(ctx);
-        return service.update(ctx.params, data, { files });
+        const { data, files } = parseMultipartData(ctx);
+        entity = await service.update({ id: ctx.params.id }, data, { files });
+      } else {
+        entity = await service.update({ id: ctx.params.id }, ctx.request.body);
       }
 
-      return service.update(ctx.params, ctx.request.body);
+      return sanitize(entity);
     },
 
     /**
@@ -87,9 +148,9 @@ module.exports = ({ service }) => {
      *
      * @return {Object}
      */
-
-    delete(ctx) {
-      return service.delete(ctx.params);
+    async delete(ctx) {
+      const entity = await service.delete({ id: ctx.params.id });
+      return sanitize(entity);
     },
-  });
+  };
 };

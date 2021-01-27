@@ -1,11 +1,12 @@
 {
-  "connection": "default",
+  "kind": "collectionType",
   "collectionName": "menus",
   "info": {
     "name": "menu",
     "description": ""
   },
   "options": {
+    "draftAndPublish": false,
     "increments": true,
     "timestamps": true,
     "comment": ""
@@ -14,9 +15,13 @@
     "description": {
       "type": "text"
     },
+    "menusections": {
+      "via": "menu",
+      "collection": "menusection"
+    },
     "restaurant": {
-      "model": "restaurant",
-      "via": "menu"
+      "via": "menu",
+      "model": "restaurant"
     }
   }
 }

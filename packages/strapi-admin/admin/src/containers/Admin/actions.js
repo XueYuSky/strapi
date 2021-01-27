@@ -5,92 +5,43 @@
  */
 
 import {
-  EMIT_EVENT,
-  GET_INIT_DATA,
-  GET_INIT_DATA_SUCCEEDED,
-  GET_SECURED_DATA,
-  GET_SECURED_DATA_SUCCEEDED,
-  HIDE_LEFT_MENU,
-  HIDE_LOGOUT,
+  GET_STRAPI_LATEST_RELEASE_SUCCEEDED,
+  GET_USER_PERMISSIONS,
+  GET_USER_PERMISSIONS_ERROR,
+  GET_USER_PERMISSIONS_SUCCEEDED,
   SET_APP_ERROR,
-  SET_APP_SECURED,
-  SHOW_LEFT_MENU,
-  SHOW_LOGOUT,
-  UNSET_APP_SECURED,
 } from './constants';
 
-export function emitEvent(event, properties) {
+export function getStrapiLatestReleaseSucceeded(latestStrapiReleaseTag, shouldUpdateStrapi) {
   return {
-    type: EMIT_EVENT,
-    event,
-    properties,
+    type: GET_STRAPI_LATEST_RELEASE_SUCCEEDED,
+    latestStrapiReleaseTag,
+    shouldUpdateStrapi,
   };
 }
 
-export function getInitData() {
+export function getUserPermissions() {
   return {
-    type: GET_INIT_DATA,
+    type: GET_USER_PERMISSIONS,
   };
 }
 
-export function getInitDataSucceeded(data) {
+export function getUserPermissionsError(error) {
   return {
-    type: GET_INIT_DATA_SUCCEEDED,
+    type: GET_USER_PERMISSIONS_ERROR,
+    error,
+  };
+}
+
+export function getUserPermissionsSucceeded(data) {
+  return {
+    type: GET_USER_PERMISSIONS_SUCCEEDED,
     data,
-  };
-}
-
-export function getSecuredData() {
-  return {
-    type: GET_SECURED_DATA,
-  };
-}
-
-export function getSecuredDataSucceeded(data) {
-  return {
-    type: GET_SECURED_DATA_SUCCEEDED,
-    data,
-  };
-}
-
-export function hideLeftMenu() {
-  return {
-    type: HIDE_LEFT_MENU,
-  };
-}
-
-export function hideLogout() {
-  return {
-    type: HIDE_LOGOUT,
   };
 }
 
 export function setAppError() {
   return {
     type: SET_APP_ERROR,
-  };
-}
-
-export function setAppSecured() {
-  return {
-    type: SET_APP_SECURED,
-  };
-}
-
-export function showLeftMenu() {
-  return {
-    type: SHOW_LEFT_MENU,
-  };
-}
-
-export function showLogout() {
-  return {
-    type: SHOW_LOGOUT,
-  };
-}
-
-export function unsetAppSecured() {
-  return {
-    type: UNSET_APP_SECURED,
   };
 }

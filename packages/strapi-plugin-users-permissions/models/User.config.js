@@ -1,19 +1,15 @@
+'use strict';
+
 module.exports = {
-  metadatas: {
+  attributes: {
     resetPasswordToken: {
-      edit: {
-        visible: false,
-      },
+      hidden: true,
+    },
+    confirmationToken: {
+      hidden: true,
     },
     provider: {
-      edit: {
-        visible: false,
-      },
-    },
-    role: {
-      edit: {
-        mainField: 'name',
-      },
+      hidden: true,
     },
   },
 };

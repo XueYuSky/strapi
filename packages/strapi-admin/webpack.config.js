@@ -1,3 +1,5 @@
+'use strict';
+
 const path = require('path');
 const webpack = require('webpack');
 
@@ -17,16 +19,17 @@ const URLs = {
 };
 
 module.exports = ({
+  useEE,
   entry,
   dest,
   env,
+  optimize,
   options = {
     backend: 'http://localhost:1337',
     publicPath: '/admin/',
   },
 }) => {
   const isProduction = env === 'production';
-
   const webpackPlugins = isProduction
     ? [
         new webpack.IgnorePlugin({
@@ -36,26 +39,18 @@ module.exports = ({
         new MiniCssExtractPlugin({
           filename: '[name].[chunkhash].css',
           chunkFilename: '[name].[chunkhash].chunkhash.css',
+          ignoreOrder: true,
         }),
+        new WebpackBar(),
       ]
     : [
         new DuplicatePckgChecker({
           verbose: true,
         }),
-        new FriendlyErrorsWebpackPlugin(),
+        new FriendlyErrorsWebpackPlugin({
+          clearConsole: false,
+        }),
       ];
-
-  const scssLoader = isProduction
-    ? [
-        {
-          loader: MiniCssExtractPlugin.loader,
-          options: {
-            fallback: require.resolve('style-loader'),
-            publicPath: options.publicPath,
-          },
-        },
-      ]
-    : [{ loader: 'style-loader', options: {} }];
 
   return {
     mode: isProduction ? 'production' : 'development',
@@ -68,12 +63,10 @@ module.exports = ({
       // Utilize long-term caching by adding content hashes (not compilation hashes)
       // to compiled assets for production
       filename: isProduction ? '[name].[contenthash:8].js' : 'bundle.js',
-      chunkFilename: isProduction
-        ? '[name].[contenthash:8].chunk.js'
-        : '[name].chunk.js',
+      chunkFilename: isProduction ? '[name].[contenthash:8].chunk.js' : '[name].chunk.js',
     },
     optimization: {
-      minimize: isProduction,
+      minimize: optimize,
       minimizer: [
         // Copied from react-scripts
         new TerserPlugin({
@@ -102,10 +95,6 @@ module.exports = ({
           sourceMap: false,
         }),
       ],
-      // splitChunks: {
-      //   chunks: 'all',
-      //   name: false,
-      // },
       runtimeChunk: true,
     },
     module: {
@@ -126,9 +115,8 @@ module.exports = ({
               plugins: [
                 require.resolve('@babel/plugin-proposal-class-properties'),
                 require.resolve('@babel/plugin-syntax-dynamic-import'),
-                require.resolve(
-                  '@babel/plugin-proposal-async-generator-functions'
-                ),
+                require.resolve('@babel/plugin-transform-modules-commonjs'),
+                require.resolve('@babel/plugin-proposal-async-generator-functions'),
                 [
                   require.resolve('@babel/plugin-transform-runtime'),
                   {
@@ -140,81 +128,31 @@ module.exports = ({
             },
           },
         },
+        // Copied from react-boilerplate https://github.com/react-boilerplate/react-boilerplate
         {
+          // Preprocess our own .css files
+          // This is the place to add your own loaders (e.g. sass/less etc.)
+          // for a list of loaders, see https://webpack.js.org/loaders/#styling
           test: /\.css$/,
-          include: /node_modules/,
-          use: [
-            {
-              loader: require.resolve('style-loader'),
-            },
-            {
-              loader: require.resolve('css-loader'),
-              options: {
-                sourceMap: false,
-              },
-            },
-            {
-              loader: require.resolve('postcss-loader'),
-              options: {
-                config: {
-                  path: path.resolve(__dirname, 'postcss.config.js'),
-                },
-              },
-            },
-          ],
+          exclude: /node_modules/,
+          use: ['style-loader', 'css-loader'],
         },
         {
-          test: /\.scss$/,
-          use: scssLoader.concat([
-            {
-              loader: require.resolve('css-loader'),
-              options: {
-                localIdentName: '[local]__[path][name]__[hash:base64:5]',
-                modules: true,
-                importLoaders: 1,
-                sourceMap: false,
-              },
-            },
-            {
-              loader: require.resolve('postcss-loader'),
-              options: {
-                config: {
-                  path: path.resolve(__dirname, 'postcss.config.js'),
-                },
-              },
-            },
-            {
-              loader: 'sass-loader',
-            },
-          ]),
+          // Preprocess 3rd party .css files located in node_modules
+          test: /\.css$/,
+          include: /node_modules/,
+          use: ['style-loader', 'css-loader'],
         },
         {
           test: /\.(svg|eot|otf|ttf|woff|woff2)$/,
           use: 'file-loader',
         },
         {
-          test: /\.(jpg|png|gif|ico)$/,
-          loaders: [
-            require.resolve('file-loader'),
-            {
-              loader: require.resolve('image-webpack-loader'),
-              query: {
-                mozjpeg: {
-                  progressive: true,
-                },
-                gifsicle: {
-                  interlaced: false,
-                },
-                optipng: {
-                  optimizationLevel: 4,
-                },
-                pngquant: {
-                  quality: '65-90',
-                  speed: 4,
-                },
-              },
-            },
-          ],
+          test: [/\.bmp$/, /\.gif$/, /\.jpe?g$/, /\.png$/, /\.ico$/],
+          loader: require.resolve('url-loader'),
+          options: {
+            limit: 1000,
+          },
         },
         {
           test: /\.html$/,
@@ -237,23 +175,36 @@ module.exports = ({
       mainFields: ['browser', 'jsnext:main', 'main'],
     },
     plugins: [
-      new WebpackBar(),
       new HtmlWebpackPlugin({
         inject: true,
         template: path.resolve(__dirname, 'index.html'),
         // favicon: path.resolve(__dirname, 'admin/src/favicon.ico'),
       }),
       new webpack.DefinePlugin({
-        'process.env.NODE_ENV': JSON.stringify(
-          isProduction ? 'production' : 'development'
-        ),
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
         NODE_ENV: JSON.stringify(isProduction ? 'production' : 'development'),
         REMOTE_URL: JSON.stringify(options.publicPath),
         BACKEND_URL: JSON.stringify(options.backend),
         MODE: JSON.stringify(URLs.mode), // Allow us to define the public path for the plugins assets.
         PUBLIC_PATH: JSON.stringify(options.publicPath),
+        PROJECT_TYPE: JSON.stringify(useEE ? 'Enterprise' : 'Community'),
       }),
+      new webpack.NormalModuleReplacementPlugin(/ee_else_ce(\.*)/, function(resource) {
+        // We might need to improve this if we want to make it work with components
+        const containerPathName = resource.context.split(`${path.sep}containers${path.sep}`);
+        const componentPathName = resource.context.split(`${path.sep}components${path.sep}`);
+        const wantedPath =
+          containerPathName.length === 1 ? componentPathName[0] : containerPathName[0];
 
+        if (useEE) {
+          resource.request = resource.request.replace(
+            /ee_else_ce/,
+            path.join(wantedPath, '../..', 'ee/admin')
+          );
+        } else {
+          resource.request = resource.request.replace(/ee_else_ce/, path.join(wantedPath));
+        }
+      }),
       ...webpackPlugins,
     ],
   };

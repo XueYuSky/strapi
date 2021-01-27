@@ -1,16 +1,13 @@
 {
-  "connection": "default",
   "collectionName": "reviews",
   "info": {
     "name": "review",
     "description": ""
   },
   "options": {
+    "draftAndPublish": false,
     "increments": true,
-    "timestamps": [
-      "created_at",
-      "updated_at"
-    ],
+    "timestamps": ["created_at", "updated_at"],
     "comment": ""
   },
   "attributes": {
@@ -25,8 +22,8 @@
       "max": 5
     },
     "likes": {
-      "collection": "like",
-      "via": "review"
+      "via": "review",
+      "collection": "like"
     },
     "author": {
       "model": "user",

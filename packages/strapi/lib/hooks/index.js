@@ -13,28 +13,22 @@ module.exports = async function() {
   };
 
   // check if a hook is enabled
-  const hookEnabled = key =>
-    get(hookConfig, ['settings', key, 'enabled'], false) === true;
+  const hookEnabled = key => get(hookConfig, ['settings', key, 'enabled'], false) === true;
 
   // list of enabled hooks
   const enableddHook = Object.keys(this.hook).filter(hookEnabled);
 
-  const addDependencies = (acc, hookKey) => {
-    const deps = this.hook[hookKey].dependencies || [];
-    if (deps.length === 0) return acc.concat(hookKey);
-    else return acc.concat(deps).concat(hookKey);
-  };
-
   // Method to initialize hooks and emit an event.
   const initialize = hookKey => {
-    if (this.hook[hookKey].loaded == true) return;
+    if (this.hook[hookKey].loaded === true) return;
 
     const module = this.hook[hookKey].load;
+    const hookTimeout = get(hookConfig, ['settings', hookKey, 'timeout'], hookConfig.timeout);
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(`(hook: ${hookKey}) is taking too long to load.`),
-        hookConfig.timeout || 1000
+        hookTimeout || 1000
       );
 
       this.hook[hookKey] = merge(this.hook[hookKey], module);
@@ -79,25 +73,17 @@ module.exports = async function() {
 
   const hooksBefore = get(hookConfig, 'load.before', [])
     .filter(hookExists)
-    .filter(hookEnabled)
-    .reduce(addDependencies, []);
+    .filter(hookEnabled);
 
   const hooksAfter = get(hookConfig, 'load.after', [])
     .filter(hookExists)
-    .filter(hookEnabled)
-    .reduce(addDependencies, []);
+    .filter(hookEnabled);
 
   const hooksOrder = get(hookConfig, 'load.order', [])
     .filter(hookExists)
-    .filter(hookEnabled)
-    .reduce(addDependencies, []);
+    .filter(hookEnabled);
 
-  const unspecifieddHook = difference(
-    enableddHook,
-    hooksBefore,
-    hooksOrder,
-    hooksAfter
-  ).reduce(addDependencies, []);
+  const unspecifieddHook = difference(enableddHook, hooksBefore, hooksOrder, hooksAfter);
 
   // before
   await initdHookSeq(hooksBefore);

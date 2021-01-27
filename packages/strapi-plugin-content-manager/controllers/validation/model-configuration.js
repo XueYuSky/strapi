@@ -1,6 +1,6 @@
 'use strict';
 
-const yup = require('yup');
+const { yup } = require('strapi-utils');
 const {
   isListable,
   hasRelationAttribute,
@@ -9,26 +9,24 @@ const {
 /**
  * Creates the validation schema for content-type configurations
  */
-module.exports = (model, schema, opts = {}) =>
+module.exports = (schema, opts = {}) =>
   yup
     .object()
     .shape({
-      settings: createSettingsSchema(model, schema)
+      settings: createSettingsSchema(schema)
         .default(null)
         .nullable(),
-      metadatas: createMetadasSchema(model, schema)
+      metadatas: createMetadasSchema(schema)
         .default(null)
         .nullable(),
-      layouts: createLayoutsSchema(model, schema, opts)
+      layouts: createLayoutsSchema(schema, opts)
         .default(null)
         .nullable(),
     })
     .noUnknown();
 
-const createSettingsSchema = (model, schema) => {
-  const validAttributes = Object.keys(schema.attributes).filter(key =>
-    isListable(schema, key)
-  );
+const createSettingsSchema = schema => {
+  const validAttributes = Object.keys(schema.attributes).filter(key => isListable(schema, key));
 
   return yup
     .object()
@@ -45,12 +43,12 @@ const createSettingsSchema = (model, schema) => {
       // should be reset when the type changes
       mainField: yup
         .string()
-        .oneOf(validAttributes)
+        .oneOf(validAttributes.concat('id'))
         .default('id'),
       // should be reset when the type changes
       defaultSortBy: yup
         .string()
-        .oneOf(validAttributes)
+        .oneOf(validAttributes.concat('id'))
         .default('id'),
       defaultSortOrder: yup
         .string()
@@ -60,7 +58,7 @@ const createSettingsSchema = (model, schema) => {
     .noUnknown();
 };
 
-const createMetadasSchema = (model, schema) => {
+const createMetadasSchema = schema => {
   return yup.object().shape(
     Object.keys(schema.attributes).reduce((acc, key) => {
       acc[key] = yup
@@ -98,14 +96,11 @@ const createMetadasSchema = (model, schema) => {
 const createArrayTest = ({ allowUndefined = false } = {}) => ({
   name: 'isArray',
   message: '${path} is required and must be an array',
-  test: val =>
-    allowUndefined === true && val === undefined ? true : Array.isArray(val),
+  test: val => (allowUndefined === true && val === undefined ? true : Array.isArray(val)),
 });
 
-const createLayoutsSchema = (model, schema, opts = {}) => {
-  const validAttributes = Object.keys(schema.attributes).filter(key =>
-    isListable(schema, key)
-  );
+const createLayoutsSchema = (schema, opts = {}) => {
+  const validAttributes = Object.keys(schema.attributes).filter(key => isListable(schema, key));
 
   const editAttributes = Object.keys(schema.attributes).filter(key =>
     hasEditableAttribute(schema, key)

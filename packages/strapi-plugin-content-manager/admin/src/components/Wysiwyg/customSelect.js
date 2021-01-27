@@ -7,43 +7,33 @@
 
 import React from 'react';
 import PropTypes from 'prop-types';
-
 import { InputSelect as Select } from 'strapi-helper-plugin';
+import useWysiwyg from '../../hooks/useWysiwyg';
 import { SELECT_OPTIONS } from './constants';
+import SelectWrapper from './SelectWrapper';
 
-import styles from './componentsStyles.scss';
+const CustomSelect = ({ disabled }) => {
+  const { headerValue, isFullscreen, handleChangeSelect } = useWysiwyg();
 
-class CustomSelect extends React.Component {
-  render() {
-    const {
-      isPreviewMode,
-      headerValue,
-      isFullscreen,
-      handleChangeSelect,
-    } = this.context;
-    const selectClassName = isFullscreen
-      ? styles.selectFullscreen
-      : styles.editorSelect;
+  return (
+    <SelectWrapper isFullscreen={isFullscreen}>
+      <Select
+        disabled={disabled}
+        name="headerSelect"
+        onChange={handleChangeSelect}
+        value={headerValue}
+        selectOptions={SELECT_OPTIONS}
+      />
+    </SelectWrapper>
+  );
+};
 
-    return (
-      <div className={selectClassName}>
-        <Select
-          disabled={isPreviewMode}
-          name="headerSelect"
-          onChange={handleChangeSelect}
-          value={headerValue}
-          selectOptions={SELECT_OPTIONS}
-        />
-      </div>
-    );
-  }
-}
+CustomSelect.defaultProps = {
+  disabled: false,
+};
 
-CustomSelect.contextTypes = {
-  handleChangeSelect: PropTypes.func,
-  headerValue: PropTypes.string,
-  isPreviewMode: PropTypes.bool,
-  isFullscreen: PropTypes.bool,
+CustomSelect.propTypes = {
+  disabled: PropTypes.bool,
 };
 
 export default CustomSelect;

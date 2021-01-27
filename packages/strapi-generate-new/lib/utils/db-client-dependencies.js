@@ -12,17 +12,21 @@ const sqlClientModule = {
 module.exports = ({ scope, client }) => {
   switch (client) {
     case 'sqlite':
+      return {
+        'strapi-connector-bookshelf': scope.strapiVersion,
+        knex: '<0.20.0',
+        [sqlClientModule[client]]: '5.0.0',
+      };
     case 'postgres':
     case 'mysql':
       return {
-        'strapi-hook-bookshelf': scope.strapiVersion,
-        'strapi-hook-knex': scope.strapiVersion,
-        knex: 'latest',
+        'strapi-connector-bookshelf': scope.strapiVersion,
+        knex: '<0.20.0',
         [sqlClientModule[client]]: 'latest',
       };
     case 'mongo':
       return {
-        'strapi-hook-mongoose': scope.strapiVersion,
+        'strapi-connector-mongoose': scope.strapiVersion,
       };
     default:
       throw new Error(`Invalid client "${client}"`);

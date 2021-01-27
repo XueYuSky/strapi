@@ -1,21 +1,21 @@
 import {
   FREEZE_APP,
-  GET_APP_PLUGINS_SUCCEEDED,
+  GET_DATA_SUCCEEDED,
+  GET_INFOS_DATA_SUCCEEDED,
   LOAD_PLUGIN,
   PLUGIN_DELETED,
   PLUGIN_LOADED,
   UNFREEZE_APP,
-  UNSET_HAS_USERS_PLUGIN,
   UPDATE_PLUGIN,
 } from '../constants';
 import {
   freezeApp,
-  getAppPluginsSucceeded,
   loadPlugin,
+  getInfosDataSucceeded,
+  getDataSucceeded,
   pluginDeleted,
   pluginLoaded,
   unfreezeApp,
-  unsetHasUserPlugin,
   updatePlugin,
 } from '../actions';
 
@@ -42,32 +42,27 @@ describe('<App /> actions', () => {
     });
   });
 
-  describe('getAppPluginsSucceeded', () => {
-    it('should return the correct type and an array containing the id of the plugins', () => {
-      const plugins = [
-        {
-          id: 'content-manager',
-          source: {
-            development: '/content-manager/main.js',
-            production: '/content-manager/main.js',
-            staging: '/content-manager/main.js',
-          },
-        },
-        {
-          id: 'content-type-builder',
-          source: {
-            development: '/content-type-builder/main.js',
-            production: '/content-type-builder/main.js',
-            staging: '/content-type-builder/main.js',
-          },
-        },
-      ];
+  describe('getDataSucceeded', () => {
+    it('shoudl return the correct type and the passed data', () => {
+      const data = { ok: true };
       const expected = {
-        type: GET_APP_PLUGINS_SUCCEEDED,
-        appPlugins: ['content-manager', 'content-type-builder'],
+        type: GET_DATA_SUCCEEDED,
+        data,
       };
 
-      expect(getAppPluginsSucceeded(plugins)).toEqual(expected);
+      expect(getDataSucceeded(data)).toEqual(expected);
+    });
+  });
+
+  describe('getInfosDataSucceeded', () => {
+    it('shoudl return the correct type and the passed data', () => {
+      const data = { ok: true };
+      const expected = {
+        type: GET_INFOS_DATA_SUCCEEDED,
+        data,
+      };
+
+      expect(getInfosDataSucceeded(data)).toEqual(expected);
     });
   });
 
@@ -113,16 +108,6 @@ describe('<App /> actions', () => {
     });
   });
 
-  describe('unsetHasUserPlugin', () => {
-    it('should return the correct type', () => {
-      const expected = {
-        type: UNSET_HAS_USERS_PLUGIN,
-      };
-
-      expect(unsetHasUserPlugin()).toEqual(expected);
-    });
-  });
-
   describe('updatePlugin', () => {
     it('should return the correct type and the passed data', () => {
       const pluginId = 'content-manager';
@@ -135,9 +120,7 @@ describe('<App /> actions', () => {
         updatedValue,
       };
 
-      expect(updatePlugin(pluginId, updatedKey, updatedValue)).toEqual(
-        expected,
-      );
+      expect(updatePlugin(pluginId, updatedKey, updatedValue)).toEqual(expected);
     });
   });
 });

@@ -1,130 +1,85 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import { bindActionCreators, compose } from 'redux';
 import { Switch, Route } from 'react-router-dom';
-import { LoadingIndicatorPage, getQueryParameters } from 'strapi-helper-plugin';
+import {
+  CheckPagePermissions,
+  LoadingIndicatorPage,
+  NotFound,
+  request,
+} from 'strapi-helper-plugin';
 import { DndProvider } from 'react-dnd';
 import HTML5Backend from 'react-dnd-html5-backend';
-
 import pluginId from '../../pluginId';
-
+import pluginPermissions from '../../permissions';
+import { getRequestUrl } from '../../utils';
 import DragLayer from '../../components/DragLayer';
-import EditView from '../EditView';
-import ListView from '../ListView';
-import SettingViewModel from '../SettingViewModel';
-import SettingViewGroup from '../SettingViewGroup';
-import SettingsView from '../SettingsView';
-
-import { getData, getLayout, resetProps } from './actions';
-import reducer from './reducer';
-import saga from './saga';
+import CollectionTypeRecursivePath from '../CollectionTypeRecursivePath';
+import ComponentSettingsView from '../ComponentSetttingsView';
+import SingleTypeRecursivePath from '../SingleTypeRecursivePath';
+import { getData, getDataSucceeded, resetProps } from './actions';
 import makeSelectMain from './selectors';
 
-function Main({
-  admin: { currentEnvironment },
-  emitEvent,
-  getData,
-  getLayout,
-  groups,
-  groupsAndModelsMainPossibleMainFields,
-  isLoading,
-  layouts,
-  location: { pathname, search },
-  global: { plugins },
-  models,
-  resetProps,
-}) {
-  strapi.useInjectReducer({ key: 'main', reducer, pluginId });
-  strapi.useInjectSaga({ key: 'main', saga, pluginId });
-  const slug = pathname.split('/')[3];
-  const source = getQueryParameters(search, 'source');
-  const getDataRef = useRef();
-  const getLayoutRef = useRef();
-  const resetPropsRef = useRef();
-
-  getDataRef.current = getData;
-  getLayoutRef.current = getLayout;
-  resetPropsRef.current = resetProps;
-
-  const shouldShowLoader =
-    slug !== 'ctm-configurations' && layouts[slug] === undefined;
-
+function Main({ getData, getDataSucceeded, isLoading, resetProps }) {
   useEffect(() => {
-    getDataRef.current();
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
+    const fetchData = async signal => {
+      getData();
+
+      try {
+        const [{ data: components }, { data: models }] = await Promise.all(
+          ['components', 'content-types'].map(endPoint =>
+            request(getRequestUrl(endPoint), { method: 'GET', signal })
+          )
+        );
+
+        getDataSucceeded(models, components);
+      } catch (err) {
+        console.error(err);
+        strapi.notification.error('notification.error');
+      }
+    };
+
+    fetchData(signal);
 
     return () => {
-      resetPropsRef.current();
+      abortController.abort();
+      resetProps();
     };
-  }, [getDataRef]);
-  useEffect(() => {
-    if (shouldShowLoader) {
-      getLayoutRef.current(slug, source);
-    }
-  }, [getLayoutRef, shouldShowLoader, slug, source]);
+  }, [getData, getDataSucceeded, resetProps]);
 
-  if (isLoading || shouldShowLoader) {
+  if (isLoading) {
     return <LoadingIndicatorPage />;
   }
-
-  const renderRoute = (props, Component) => (
-    <Component
-      currentEnvironment={currentEnvironment}
-      emitEvent={emitEvent}
-      groups={groups}
-      groupsAndModelsMainPossibleMainFields={
-        groupsAndModelsMainPossibleMainFields
-      }
-      layouts={layouts}
-      models={models}
-      plugins={plugins}
-      {...props}
-    />
-  );
-  const routes = [
-    {
-      path: 'ctm-configurations/models/:name/:settingType',
-      comp: SettingViewModel,
-    },
-    { path: 'ctm-configurations/groups/:name', comp: SettingViewGroup },
-    { path: 'ctm-configurations/:type', comp: SettingsView },
-    { path: ':slug/:id', comp: EditView },
-    { path: ':slug', comp: ListView },
-  ].map(({ path, comp }) => (
-    <Route
-      key={path}
-      path={`/plugins/${pluginId}/${path}`}
-      render={props => renderRoute(props, comp)}
-    />
-  ));
 
   return (
     <DndProvider backend={HTML5Backend}>
       <DragLayer />
-      <Switch>{routes}</Switch>
+
+      <Switch>
+        <Route path={`/plugins/${pluginId}/components/:uid/configurations/edit`}>
+          <CheckPagePermissions permissions={pluginPermissions.componentsConfigurations}>
+            <ComponentSettingsView />
+          </CheckPagePermissions>
+        </Route>
+        <Route
+          path={`/plugins/${pluginId}/collectionType/:slug`}
+          component={CollectionTypeRecursivePath}
+        />
+        <Route path={`/plugins/${pluginId}/singleType/:slug`} component={SingleTypeRecursivePath} />
+        <Route path="" component={NotFound} />
+      </Switch>
     </DndProvider>
   );
 }
 
 Main.propTypes = {
-  admin: PropTypes.shape({
-    currentEnvironment: PropTypes.string.isRequired,
-  }),
-  emitEvent: PropTypes.func.isRequired,
   getData: PropTypes.func.isRequired,
-  getLayout: PropTypes.func.isRequired,
-  global: PropTypes.shape({
-    plugins: PropTypes.object,
-  }),
-  groups: PropTypes.array.isRequired,
-  groupsAndModelsMainPossibleMainFields: PropTypes.object.isRequired,
-  isLoading: PropTypes.bool,
-  layouts: PropTypes.object.isRequired,
-  location: PropTypes.shape({
-    pathname: PropTypes.string.isRequired,
-    search: PropTypes.string,
-  }),
-  models: PropTypes.array.isRequired,
+  getDataSucceeded: PropTypes.func.isRequired,
+  isLoading: PropTypes.bool.isRequired,
   resetProps: PropTypes.func.isRequired,
 };
 
@@ -134,18 +89,12 @@ export function mapDispatchToProps(dispatch) {
   return bindActionCreators(
     {
       getData,
-      getLayout,
+      getDataSucceeded,
       resetProps,
     },
     dispatch
   );
 }
-const withConnect = connect(
-  mapStateToProps,
-  mapDispatchToProps
-);
+const withConnect = connect(mapStateToProps, mapDispatchToProps);
 
-export default compose(
-  withConnect,
-  memo
-)(Main);
+export default compose(withConnect)(Main);

@@ -4,8 +4,10 @@
 const _ = require('lodash');
 const resolveCwd = require('resolve-cwd');
 const { yellow } = require('chalk');
+const { Command } = require('commander');
 
-const program = require('strapi-utils').commander;
+const program = new Command();
+
 const packageJSON = require('../package.json');
 
 const checkCwdIsStrapiApp = name => {
@@ -41,50 +43,48 @@ const getLocalScript = name => (...args) => {
     process.exit(1);
   }
 
-  return require(cmdPath)(...args);
+  const script = require(cmdPath);
+
+  Promise.resolve()
+    .then(() => {
+      return script(...args);
+    })
+    .catch(error => {
+      console.error(`Error while running command ${name}: ${error.message || error}`);
+      process.exit(1);
+    });
 };
 
-/**
- * Normalize version argument
- *
- * `$ strapi -v`
- * `$ strapi -V`
- * `$ strapi --version`
- * `$ strapi version`
- */
+// Initial program setup
+program
+  .storeOptionsAsProperties(false)
+  .passCommandToAction(false)
+  .allowUnknownOption(true);
 
-program.allowUnknownOption(true);
-
-// Expose version.
-program.version(packageJSON.version, '-v, --version');
-
-// Make `-v` option case-insensitive.
-process.argv = _.map(process.argv, arg => {
-  return arg === '-V' ? '-v' : arg;
-});
+program.helpOption('-h, --help', 'Display help for command');
+program.addHelpCommand('help [command]', 'Display help for command');
 
 // `$ strapi version` (--version synonym)
+program.version(packageJSON.version, '-v, --version', 'Output the version number');
 program
   .command('version')
-  .description('output your version of Strapi')
+  .description('Output your version of Strapi')
   .action(() => {
-    console.log(packageJSON.version);
+    process.stdout.write(packageJSON.version + '\n');
+    process.exit(0);
   });
 
 // `$ strapi console`
 program
   .command('console')
-  .description('open the Strapi framework console')
+  .description('Open the Strapi framework console')
   .action(getLocalScript('console'));
 
 // `$ strapi new`
 program
   .command('new <directory>')
   .option('--no-run', 'Do not start the application after it is created')
-  .option(
-    '--use-npm',
-    'Force usage of npm instead of yarn to create the project'
-  )
+  .option('--use-npm', 'Force usage of npm instead of yarn to create the project')
   .option('--debug', 'Display database connection error')
   .option('--quickstart', 'Quickstart app creation')
   .option('--dbclient <dbclient>', 'Database client')
@@ -98,7 +98,7 @@ program
   .option('--dbauth <dbauth>', 'Authentication Database')
   .option('--dbfile <dbfile>', 'Database file path for sqlite')
   .option('--dbforce', 'Overwrite database content if any')
-  .description('create a new application')
+  .description('Create a new application')
   .action(require('../lib/commands/new'));
 
 // `$ strapi start`
@@ -111,17 +111,21 @@ program
 program
   .command('develop')
   .alias('dev')
-  .option('--no-build', 'Disable build', false)
+  .option('--no-build', 'Disable build')
+  .option('--watch-admin', 'Enable watch', false)
+  .option('--browser <name>', 'Open the browser', true)
   .description('Start your Strapi application in development mode')
   .action(getLocalScript('develop'));
 
 // `$ strapi generate:api`
 program
   .command('generate:api <id> [attributes...]')
-  .option('-t, --tpl <template>', 'template name')
-  .option('-a, --api <api>', 'API name to generate a sub API')
-  .option('-p, --plugin <plugin>', 'plugin name to generate a sub API')
-  .description('generate a basic API')
+  .option('-a, --api <api>', 'API name to generate the files in')
+  .option('-p, --plugin <api>', 'Name of the local plugin')
+  .option('-e, --extend <api>', 'Name of the plugin to extend')
+  .option('-c, --connection <connection>', 'The name of the connection to use')
+  .option('--draft-and-publish', 'Enable draft/publish', false)
+  .description('Generate a basic API')
   .action((id, attributes, cliArguments) => {
     cliArguments.attributes = attributes;
     getLocalScript('generate')(id, cliArguments);
@@ -130,10 +134,10 @@ program
 // `$ strapi generate:controller`
 program
   .command('generate:controller <id>')
-  .option('-a, --api <api>', 'API name to generate a sub API')
-  .option('-p, --plugin <api>', 'plugin name')
-  .option('-t, --tpl <template>', 'template name')
-  .description('generate a controller for an API')
+  .option('-a, --api <api>', 'API name to generate the files in')
+  .option('-p, --plugin <api>', 'Name of the local plugin')
+  .option('-e, --extend <api>', 'Name of the plugin to extend')
+  .description('Generate a controller for an API')
   .action(getLocalScript('generate'));
 
 // `$ strapi generate:model`
@@ -141,8 +145,9 @@ program
   .command('generate:model <id> [attributes...]')
   .option('-a, --api <api>', 'API name to generate a sub API')
   .option('-p, --plugin <api>', 'plugin name')
-  .option('-t, --tpl <template>', 'template name')
-  .description('generate a model for an API')
+  .option('-c, --connection <connection>', 'The name of the connection to use')
+  .option('--draft-and-publish', 'Enable draft/publish', false)
+  .description('Generate a model for an API')
   .action((id, attributes, cliArguments) => {
     cliArguments.attributes = attributes;
     getLocalScript('generate')(id, cliArguments);
@@ -153,7 +158,7 @@ program
   .command('generate:policy <id>')
   .option('-a, --api <api>', 'API name')
   .option('-p, --plugin <api>', 'plugin name')
-  .description('generate a policy for an API')
+  .description('Generate a policy for an API')
   .action(getLocalScript('generate'));
 
 // `$ strapi generate:service`
@@ -162,56 +167,66 @@ program
   .option('-a, --api <api>', 'API name')
   .option('-p, --plugin <api>', 'plugin name')
   .option('-t, --tpl <template>', 'template name')
-  .description('generate a service for an API')
+  .description('Generate a service for an API')
   .action(getLocalScript('generate'));
 
 // `$ strapi generate:plugin`
 program
   .command('generate:plugin <id>')
   .option('-n, --name <name>', 'Plugin name')
-  .description('generate a basic plugin')
+  .description('Generate a basic plugin')
   .action(getLocalScript('generate'));
 
 program
   .command('build')
+  .option('--clean', 'Remove the build and .cache folders', false)
+  .option('--no-optimization', 'Build the Administration without assets optimization')
   .description('Builds the strapi admin app')
   .action(getLocalScript('build'));
 
 // `$ strapi install`
 program
   .command('install [plugins...]')
-  .description('install a Strapi plugin')
+  .description('Install a Strapi plugin')
   .action(getLocalScript('install'));
 
 // `$ strapi uninstall`
 program
   .command('uninstall [plugins...]')
-  .description('uninstall a Strapi plugin')
+  .description('Uninstall a Strapi plugin')
   .option('-d, --delete-files', 'Delete files', false)
   .action(getLocalScript('uninstall'));
 
-/**
- * Normalize help argument
- */
-
-// `$ strapi help` (--help synonym)
+//   `$ strapi watch-admin`
 program
-  .command('help')
-  .description('output the help')
-  .action(program.usageMinusWildcard);
+  .command('watch-admin')
+  .option('--browser <name>', 'Open the browser', true)
+  .description('Starts the admin dev server')
+  .action(getLocalScript('watchAdmin'));
 
-// `$ strapi <unrecognized_cmd>`
-// Mask the '*' in `help`.
-program.command('*').action(program.usageMinusWildcard);
+program
+  .command('configuration:dump')
+  .alias('config:dump')
+  .description('Dump configurations of your application')
+  .option('-f, --file <file>', 'Output file, default output is stdout')
+  .option('-p, --pretty', 'Format the output JSON with indentation and line breaks', false)
+  .action(getLocalScript('configurationDump'));
 
-// Don't balk at unknown options.
+program
+  .command('configuration:restore')
+  .alias('config:restore')
+  .description('Restore configurations of your application')
+  .option('-f, --file <file>', 'Input file, default input is stdin')
+  .option('-s, --strategy <strategy>', 'Strategy name, one of: "replace", "merge", "keep"')
+  .action(getLocalScript('configurationRestore'));
 
-/**
- * `$ strapi`
- */
+// Admin
+program
+  .command('admin:reset-user-password')
+  .alias('admin:reset-password')
+  .description("Reset an admin user's password")
+  .option('-e, --email <email>', 'The user email')
+  .option('-p, --password <password>', 'New password for the user')
+  .action(getLocalScript('admin-reset'));
 
-program.parse(process.argv);
-const NO_COMMAND_SPECIFIED = program.args.length === 0;
-if (NO_COMMAND_SPECIFIED) {
-  program.usageMinusWildcard();
-}
+program.parseAsync(process.argv);

@@ -13,18 +13,19 @@ import 'codemirror/addon/lint/javascript-lint';
 import 'codemirror/addon/edit/closebrackets';
 import 'codemirror/addon/selection/mark-selection';
 import 'codemirror/lib/codemirror.css';
-import 'codemirror/theme/3024-night.css';
+import 'codemirror/theme/solarized.css';
 
-import { isEmpty, isObject, trimStart } from 'lodash';
+import { trimStart } from 'lodash';
 import jsonlint from './jsonlint';
 import Wrapper from './components';
 
 const WAIT = 600;
 const stringify = JSON.stringify;
-const parse = JSON.parse;
-const DEFAULT_THEME = '3024-night';
+const DEFAULT_THEME = 'solarized dark';
 
 class InputJSON extends React.Component {
+  timer = null;
+
   constructor(props) {
     super(props);
     this.editor = React.createRef();
@@ -43,6 +44,7 @@ class InputJSON extends React.Component {
       styleSelectedText: true,
       tabSize: 2,
       theme: DEFAULT_THEME,
+      fontSize: '13px',
     });
     this.codeMirror.on('change', this.handleChange);
     this.codeMirror.on('blur', this.handleBlur);
@@ -52,11 +54,7 @@ class InputJSON extends React.Component {
   }
 
   componentDidUpdate(prevProps) {
-    if (
-      isEmpty(prevProps.value) &&
-      !isEmpty(this.props.value) &&
-      !this.state.hasInitValue
-    ) {
+    if (prevProps.value !== this.props.value && !this.codeMirror.state.focused) {
       this.setInitValue();
     }
   }
@@ -64,15 +62,14 @@ class InputJSON extends React.Component {
   setInitValue = () => {
     const { value } = this.props;
 
-    if (isObject(value) && value !== null) {
-      try {
-        parse(stringify(value));
-        this.setState({ hasInitValue: true });
+    try {
+      if (value === null) return this.codeMirror.setValue('');
 
-        return this.codeMirror.setValue(stringify(value, null, 2));
-      } catch (err) {
-        return this.setState({ error: true });
-      }
+      const nextValue = typeof value !== 'string' ? stringify(value, null, 2) : value;
+
+      return this.codeMirror.setValue(nextValue);
+    } catch (err) {
+      return this.setState({ error: true });
     }
   };
 
@@ -89,7 +86,7 @@ class InputJSON extends React.Component {
     let content = this.getContentAtLine(line);
 
     if (content === '{') {
-      line = line + 1;
+      line += 1;
       content = this.getContentAtLine(line);
     }
     const chEnd = content.length;
@@ -101,8 +98,6 @@ class InputJSON extends React.Component {
     );
     this.setState({ markedText });
   };
-
-  timer = null;
 
   handleBlur = ({ target }) => {
     const { name, onBlur } = this.props;
@@ -119,15 +114,16 @@ class InputJSON extends React.Component {
     }
   };
 
-  handleChange = () => {
-    const { hasInitValue } = this.state;
-    const { name, onChange } = this.props;
-    let value = this.codeMirror.getValue();
+  handleChange = (doc, change) => {
+    if (change.origin === 'setValue') {
+      return;
+    }
 
-    try {
-      value = parse(value);
-    } catch (err) {
-      // Silent
+    const { name, onChange } = this.props;
+    let value = doc.getValue();
+
+    if (value === '') {
+      value = null;
     }
 
     // Update the parent
@@ -139,10 +135,6 @@ class InputJSON extends React.Component {
       },
     });
 
-    if (!hasInitValue) {
-      this.setState({ hasInitValue: true });
-    }
-
     // Remove higlight error
     if (this.state.markedText) {
       this.state.markedText.clear();
@@ -150,10 +142,7 @@ class InputJSON extends React.Component {
     }
 
     clearTimeout(this.timer);
-    this.timer = setTimeout(
-      () => this.testJSON(this.codeMirror.getValue()),
-      WAIT
-    );
+    this.timer = setTimeout(() => this.testJSON(doc.getValue()), WAIT);
   };
 
   testJSON = value => {
@@ -170,13 +159,8 @@ class InputJSON extends React.Component {
     }
 
     return (
-      <Wrapper>
-        <textarea
-          ref={this.editor}
-          autoComplete="off"
-          id={this.props.name}
-          defaultValue=""
-        />
+      <Wrapper disabled={this.props.disabled}>
+        <textarea ref={this.editor} autoComplete="off" id={this.props.name} defaultValue="" />
       </Wrapper>
     );
   }

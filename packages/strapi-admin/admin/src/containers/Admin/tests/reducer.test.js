@@ -1,15 +1,11 @@
-import { fromJS, Map } from 'immutable';
-
+import produce from 'immer';
+import packageJSON from '../../../../../package.json';
 import {
-  getSecuredDataSucceeded,
-  getInitDataSucceeded,
-  hideLeftMenu,
-  hideLogout,
   setAppError,
-  setAppSecured,
-  showLeftMenu,
-  showLogout,
-  unsetAppSecured,
+  getUserPermissions,
+  getUserPermissionsError,
+  getUserPermissionsSucceeded,
+  getStrapiLatestReleaseSucceeded,
 } from '../actions';
 import adminReducer from '../reducer';
 
@@ -17,20 +13,22 @@ describe('adminReducer', () => {
   let state;
 
   beforeEach(() => {
-    state = fromJS({
-      autoReload: false,
+    state = {
       appError: false,
-      currentEnvironment: 'development',
-      didGetSecuredData: false,
       isLoading: true,
-      isSecured: false,
-      layout: Map({}),
-      securedData: {},
-      showLogoutComponent: false,
-      showMenu: true,
-      strapiVersion: '3',
-      uuid: false,
+      latestStrapiReleaseTag: `v${packageJSON.version}`,
+      userPermissions: [],
+      shouldUpdateStrapi: false,
+    };
+  });
+
+  it('should set the latest release version', () => {
+    const expected = produce(state, draft => {
+      draft.shouldUpdateStrapi = true;
+      draft.latestStrapiReleaseTag = 'v3.3.4';
     });
+
+    expect(adminReducer(state, getStrapiLatestReleaseSucceeded('v3.3.4', true))).toEqual(expected);
   });
 
   it('returns the initial state', () => {
@@ -39,76 +37,39 @@ describe('adminReducer', () => {
     expect(adminReducer(undefined, {})).toEqual(expected);
   });
 
-  it('should handle the getSecuredDataSucceeded action correctly', () => {
-    const expected = state
-      .set('didGetSecuredData', true)
-      .set('securedData', undefined);
-
-    expect(adminReducer(state, getSecuredDataSucceeded())).toEqual(expected);
-  });
-
-  it('should handle the getAdminDataSucceeded action correctly', () => {
-    const data = {
-      autoReload: true,
-      currentEnvironment: 'production',
-      isLoading: false,
-      layout: {},
-      strapiVersion: '3.0.0-beta',
-      uuid: 'uuid',
-    };
-    const expected = state
-      .set('autoReload', true)
-      .set('currentEnvironment', 'production')
-      .set('isLoading', false)
-      .set('layout', Map({}))
-      .set('strapiVersion', '3.0.0-beta')
-      .set('uuid', 'uuid');
-
-    expect(adminReducer(state, getInitDataSucceeded(data))).toEqual(expected);
-  });
-
-  it('should handle the hideLeftMenu action correctly', () => {
-    const expected = state.set('showMenu', false);
-
-    expect(adminReducer(state, hideLeftMenu())).toEqual(expected);
-  });
-
-  it('should handle the hideLogout action correctly', () => {
-    const expected = state.set('showLogoutComponent', false);
-
-    expect(adminReducer(state, hideLogout())).toEqual(expected);
-  });
-
-  it('should handle the setaAppError action correctly', () => {
-    const expected = state.set('appError', true);
+  it('should handle the setAppError action correctly', () => {
+    const expected = produce(state, draft => {
+      draft.appError = true;
+    });
 
     expect(adminReducer(state, setAppError())).toEqual(expected);
   });
 
-  it('should handle the setAppSecured action correctly', () => {
-    const expected = state.set('isSecured', true);
+  it('should handle the getUserPermissions action correctly', () => {
+    const expected = produce(state, draft => {
+      draft.isLoading = true;
+    });
 
-    expect(adminReducer(state, setAppSecured())).toEqual(expected);
+    expect(adminReducer(state, getUserPermissions())).toEqual(expected);
   });
 
-  it('should handle the showLeftMenu action correctly', () => {
-    const expected = state.set('showMenu', true);
-    state.set('showMenu', false);
+  it('should handle the getUserPermissionsError action correctly', () => {
+    const error = 'Error';
+    const expected = produce(state, draft => {
+      draft.isLoading = false;
+      draft.error = error;
+    });
 
-    expect(adminReducer(state, showLeftMenu())).toEqual(expected);
+    expect(adminReducer(state, getUserPermissionsError(error))).toEqual(expected);
   });
 
-  it('should handle the showLogout action correctly', () => {
-    const expected = state.set('showLogoutComponent', true);
-    state.set('showLogoutComponent', false);
+  it('should handle the getUserPermissionsSucceeded action correctly', () => {
+    const data = ['permission 1', 'permission 2'];
+    const expected = produce(state, draft => {
+      draft.isLoading = false;
+      draft.userPermissions = data;
+    });
 
-    expect(adminReducer(state, showLogout())).toEqual(expected);
-  });
-
-  it('should handle the unsetAppSecured action correctly', () => {
-    state.set('isSecured', true);
-    const expected = state.set('isSecured', false);
-
-    expect(adminReducer(state, unsetAppSecured())).toEqual(expected);
+    expect(adminReducer(state, getUserPermissionsSucceeded(data))).toEqual(expected);
   });
 });

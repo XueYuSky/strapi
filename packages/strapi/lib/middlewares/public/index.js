@@ -5,9 +5,13 @@
  */
 
 // Node.js core.
+const fs = require('fs');
 const path = require('path');
+const stream = require('stream');
 const _ = require('lodash');
 const koaStatic = require('koa-static');
+const utils = require('../../utils');
+const serveStatic = require('./serve-static');
 
 /**
  * Public assets hook
@@ -19,98 +23,76 @@ module.exports = strapi => {
      * Initialize the hook
      */
 
-    initialize() {
-      const { maxAge } = strapi.config.middleware.settings.public;
+    async initialize() {
+      const { defaultIndex, maxAge, path: publicPath } = strapi.config.middleware.settings.public;
+      const staticDir = path.resolve(strapi.dir, publicPath || strapi.config.paths.static);
 
-      const staticDir = path.resolve(
-        strapi.dir,
-        strapi.config.middleware.settings.public.path ||
-          strapi.config.paths.static
-      );
+      if (defaultIndex === true) {
+        const index = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-      // Serve /public index page.
-      strapi.router.get(
-        '/',
-        async (ctx, next) => {
-          ctx.url = path.basename(`${ctx.url}/index.html`);
+        const serveIndexPage = async (ctx, next) => {
+          // defer rendering of strapi index page
           await next();
-        },
+          if (ctx.body != null || ctx.status !== 404) return;
+
+          ctx.url = 'index.html';
+          const isInitialised = await utils.isInitialised(strapi);
+          const data = {
+            serverTime: new Date().toUTCString(),
+            isInitialised,
+            ..._.pick(strapi, [
+              'config.info.version',
+              'config.info.name',
+              'config.admin.url',
+              'config.server.url',
+              'config.environment',
+              'config.serveAdminPanel',
+            ]),
+          };
+          const content = _.template(index)(data);
+          const body = stream.Readable({
+            read() {
+              this.push(Buffer.from(content));
+              this.push(null);
+            },
+          });
+          // Serve static.
+          ctx.type = 'html';
+          ctx.body = body;
+        };
+
+        strapi.router.get('/', serveIndexPage);
+        strapi.router.get('/index.html', serveIndexPage);
+        strapi.router.get(
+          '/assets/images/(.*)',
+          serveStatic(path.resolve(__dirname, 'assets/images'), { maxage: maxAge, defer: true })
+        );
+      }
+
+      // serve files in public folder unless a sub router renders something else
+      strapi.router.get(
+        '/(.*)',
         koaStatic(staticDir, {
           maxage: maxAge,
           defer: true,
         })
       );
 
-      // Match every route with an extension.
-      // The file without extension will not be served.
-      // Note: This route could be override by the user.
-      strapi.router.get(
-        '/*',
-        async (ctx, next) => {
-          const parse = path.parse(ctx.url);
-          ctx.url = path.join(parse.dir, parse.base);
-
-          await next();
-        },
-        koaStatic(staticDir, {
-          maxage: maxAge,
-          defer: true,
-        })
-      );
-
-      const basename = _.get(
-        strapi.config.currentEnvironment.server,
-        'admin.path'
-      )
-        ? strapi.config.currentEnvironment.server.admin.path
-        : '/admin';
+      if (!strapi.config.serveAdminPanel) return;
 
       const buildDir = path.resolve(strapi.dir, 'build');
+      const serveAdmin = ctx => {
+        ctx.type = 'html';
+        ctx.body = fs.createReadStream(path.join(buildDir + '/index.html'));
+      };
 
-      // Serve /admin index page.
       strapi.router.get(
-        basename,
-        async (ctx, next) => {
-          ctx.url = 'index.html';
-          await next();
-        },
-        koaStatic(buildDir, {
-          maxage: maxAge,
-          defer: true,
-        })
+        `${strapi.config.admin.path}/*`,
+        serveStatic(buildDir, { maxage: maxAge, defer: false, index: 'index.html' })
       );
 
-      // Allow refresh in admin page.
-      strapi.router.get(
-        `${basename}/*`,
-        async (ctx, next) => {
-          const parse = path.parse(ctx.url);
-
-          if (parse.ext === '') {
-            ctx.url = 'index.html';
-          }
-
-          await next();
-        },
-        koaStatic(buildDir, {
-          maxage: maxAge,
-          defer: true,
-        })
-      );
-
-      // Serve admin assets.
-      strapi.router.get(
-        `${basename}/*.*`,
-        async (ctx, next) => {
-          ctx.url = path.basename(ctx.url);
-
-          await next();
-        },
-        koaStatic(buildDir, {
-          maxage: maxAge,
-          defer: true,
-        })
-      );
+      strapi.router.get(`${strapi.config.admin.path}`, serveAdmin);
+      strapi.router.get(`${strapi.config.admin.path}/*`, serveAdmin);
     },
   };
 };

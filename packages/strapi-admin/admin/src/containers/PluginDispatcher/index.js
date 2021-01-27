@@ -6,11 +6,11 @@
 
 import React, { memo } from 'react';
 import PropTypes from 'prop-types';
+import { Redirect } from 'react-router-dom';
 import { get } from 'lodash';
 
-import Helmet from 'react-helmet';
 import { BlockerComponent } from 'strapi-helper-plugin';
-import favicon from '../../favicon.ico';
+import PageTitle from '../../components/PageTitle';
 
 import { LOGIN_LOGO } from '../../config';
 import ErrorBoundary from '../ErrorBoundary';
@@ -26,7 +26,7 @@ export function PluginDispatcher(props) {
   const pluginToRender = get(plugins, pluginId, null);
 
   if (!pluginToRender) {
-    return null;
+    return <Redirect to="/404" />;
   }
 
   const {
@@ -36,9 +36,7 @@ export function PluginDispatcher(props) {
     name,
     preventComponentRendering,
   } = pluginToRender;
-  let PluginEntryComponent = preventComponentRendering
-    ? BlockerComponent
-    : mainComponent;
+  let PluginEntryComponent = preventComponentRendering ? BlockerComponent : mainComponent;
 
   // Change the plugin's blockerComponent if the plugin uses a custom one.
   if (preventComponentRendering && blockerComponent) {
@@ -47,10 +45,7 @@ export function PluginDispatcher(props) {
 
   return (
     <div>
-      <Helmet
-        title={`Strapi - ${name}`}
-        link={[{ rel: 'icon', type: 'image/png', href: favicon }]}
-      />
+      <PageTitle title={`Strapi - ${name}`} />
       <ErrorBoundary>
         <PluginEntryComponent
           {...props}

@@ -1,74 +1,47 @@
 'use strict';
 
-// Dependencies.
 const http = require('http');
 const path = require('path');
-const { EventEmitter } = require('events');
 const fse = require('fs-extra');
 const Koa = require('koa');
 const Router = require('koa-router');
 const _ = require('lodash');
-const { logger, models } = require('strapi-utils');
+const chalk = require('chalk');
+const CLITable = require('cli-table3');
+const { logger, models, getAbsoluteAdminUrl, getAbsoluteServerUrl } = require('strapi-utils');
+const { createDatabaseManager } = require('strapi-database');
+const loadConfiguration = require('./core/app-configuration');
+
 const utils = require('./utils');
-const {
-  loadConfig,
-  loadApis,
-  loadAdmin,
-  loadPlugins,
-  loadMiddlewares,
-  loadHooks,
-  bootstrap,
-  loadExtensions,
-  initCoreStore,
-  loadGroups,
-} = require('./core');
+const loadModules = require('./core/load-modules');
+const bootstrap = require('./core/bootstrap');
 const initializeMiddlewares = require('./middlewares');
 const initializeHooks = require('./hooks');
 const createStrapiFs = require('./core/fs');
-const getPrefixedDeps = require('./utils/get-prefixed-dependencies');
-
-const createQueryManager = () => {
-  const _queries = new Map();
-
-  const toUid = (modelKey, plugin) => {
-    return plugin ? `plugins::${plugin}.${modelKey}` : modelKey;
-  };
-
-  return {
-    get({ modelKey, plugin }) {
-      return _queries.get(toUid(modelKey, plugin));
-    },
-    has({ modelKey, plugin }) {
-      return _queries.has(toUid(modelKey, plugin));
-    },
-    set({ modelKey, plugin }, query) {
-      const uid = toUid(modelKey, plugin);
-      _queries.set(uid, query);
-      return this;
-    },
-  };
-};
+const createEventHub = require('./services/event-hub');
+const createWebhookRunner = require('./services/webhook-runner');
+const { webhookModel, createWebhookStore } = require('./services/webhook-store');
+const { createCoreStore, coreStoreModel } = require('./services/core-store');
+const createEntityService = require('./services/entity-service');
+const entityValidator = require('./services/entity-validator');
+const createTelemetry = require('./services/metrics');
+const createUpdateNotifier = require('./utils/update-notifier');
+const ee = require('./utils/ee');
 
 /**
  * Construct an Strapi instance.
  *
  * @constructor
  */
-
-class Strapi extends EventEmitter {
-  constructor({ dir, autoReload = false } = {}) {
-    super();
-
-    this.setMaxListeners(100);
-
+class Strapi {
+  constructor(opts = {}) {
     this.reload = this.reload();
 
     // Expose `koa`.
     this.app = new Koa();
     this.router = new Router();
 
-    // Mount the HTTP server.
-    this.server = http.createServer(this.app.callback());
+    this.initServer();
 
     // Logger.
     this.log = logger;
@@ -78,136 +51,114 @@ class Strapi extends EventEmitter {
       models,
     };
 
-    // Exclude EventEmitter, Koa and HTTP server to be freezed.
-    this.propertiesToNotFreeze = Object.keys(this);
+    this.dir = opts.dir || process.cwd();
 
-    // Expose `admin`.
     this.admin = {};
-
-    // Expose `plugin`.
     this.plugins = {};
+    this.config = loadConfiguration(this.dir, opts);
+    this.app.proxy = this.config.get('server.proxy');
 
-    this.dir = dir || process.cwd();
-    const pkgJSON = require(path.resolve(this.dir, 'package.json'));
+    this.isLoaded = false;
 
-    // Default configurations.
-    this.config = {
-      launchedAt: Date.now(),
-      appPath: this.dir,
-      autoReload,
-      host: process.env.HOST || process.env.HOSTNAME || 'localhost',
-      port: process.env.PORT || 1337,
-      environment: _.toLower(process.env.NODE_ENV) || 'development',
-      environments: {},
-      admin: {},
-      paths: {
-        admin: 'admin',
-        api: 'api',
-        config: 'config',
-        controllers: 'controllers',
-        models: 'models',
-        plugins: 'plugins',
-        policies: 'policies',
-        tmp: '.tmp',
-        services: 'services',
-        static: 'public',
-        validators: 'validators',
-        views: 'views',
-      },
-      middleware: {},
-      hook: {},
-      functions: {},
-      routes: {},
-      info: pkgJSON,
-      installedPlugins: getPrefixedDeps('strapi-plugin', pkgJSON),
-      installedMiddlewares: getPrefixedDeps('strapi-middleware', pkgJSON),
-      installedHooks: getPrefixedDeps('strapi-hook', pkgJSON),
-    };
-
-    this.queryManager = createQueryManager();
+    // internal services.
     this.fs = createStrapiFs(this);
+    this.eventHub = createEventHub();
+
     this.requireProjectBootstrap();
+
+    createUpdateNotifier(this).notify();
+  }
+
+  get EE() {
+    return ee({ dir: this.dir, logger });
+  }
+
+  handleRequest(req, res) {
+    if (!this.requestHandler) {
+      this.requestHandler = this.app.callback();
+    }
+
+    return this.requestHandler(req, res);
   }
 
   requireProjectBootstrap() {
-    const bootstrapPath = path.resolve(
-      this.dir,
-      'config/functions/bootstrap.js'
-    );
+    const bootstrapPath = path.resolve(this.dir, 'config/functions/bootstrap.js');
 
     if (fse.existsSync(bootstrapPath)) {
       require(bootstrapPath);
     }
   }
 
-  async start(cb) {
-    try {
-      // Emit starting event.
-      this.emit('server:starting');
+  logStats() {
+    const columns = Math.min(process.stderr.columns, 80) - 2;
+    console.log();
+    console.log(chalk.black.bgWhite(_.padEnd(' Project information', columns)));
+    console.log();
 
-      await this.load();
-      // Run bootstrap function.
-      await this.runBootstrapFunctions();
-      // Freeze object.
-      await this.freeze();
-      // Init first start
-      utils.init(this.config);
+    const infoTable = new CLITable({
+      colWidths: [20, 50],
+      chars: { mid: '', 'left-mid': '', 'mid-mid': '', 'right-mid': '' },
+    });
 
-      this.app.use(this.router.routes()).use(this.router.allowedMethods());
+    const isEE = strapi.EE === true && ee.isEE === true;
 
-      // Launch server.
-      this.server.listen(this.config.port, async err => {
-        if (err) return this.stopWithError(err);
+    infoTable.push(
+      [chalk.blue('Time'), `${new Date()}`],
+      [chalk.blue('Launched in'), Date.now() - this.config.launchedAt + ' ms'],
+      [chalk.blue('Environment'), this.config.environment],
+      [chalk.blue('Process PID'), process.pid],
+      [chalk.blue('Version'), `${this.config.info.strapi} (node ${process.version})`],
+      [chalk.blue('Edition'), isEE ? 'Enterprise' : 'Community']
+    );
 
-        this.log.info('Time: ' + new Date());
-        this.log.info(
-          'Launched in: ' + (Date.now() - this.config.launchedAt) + ' ms'
-        );
-        this.log.info('Environment: ' + this.config.environment);
-        this.log.info('Process PID: ' + process.pid);
-        this.log.info(
-          `Version: ${this.config.info.strapi} (node v${this.config.info.node})`
-        );
-        this.log.info('To shut down your server, press <CTRL> + C at any time');
-        console.log();
-        this.log.info(`☄️  Admin panel: ${this.config.admin.url}`);
-        this.log.info(`⚡️ Server: ${this.config.url}`);
-        console.log();
-
-        // Emit started event.
-        this.emit('server:started');
-
-        if (cb && typeof cb === 'function') {
-          cb();
-        }
-
-        if (
-          (this.config.environment === 'development' &&
-            _.get(
-              this.config.currentEnvironment,
-              'server.admin.autoOpen',
-              true
-            ) !== false) ||
-          this.config.init
-        ) {
-          await utils.openBrowser.call(this);
-        }
-      });
-    } catch (err) {
-      this.stopWithError(err);
-    }
+    console.log(infoTable.toString());
+    console.log();
+    console.log(chalk.black.bgWhite(_.padEnd(' Actions available', columns)));
+    console.log();
   }
 
-  /**
-   * Add behaviors to the server
-   */
-  async enhancer() {
+  logFirstStartupMessage() {
+    this.logStats();
+
+    console.log(chalk.bold('One more thing...'));
+    console.log(
+      chalk.grey('Create your first administrator 💻 by going to the administration panel at:')
+    );
+    console.log();
+
+    const addressTable = new CLITable();
+
+    const adminUrl = getAbsoluteAdminUrl(strapi.config);
+    addressTable.push([chalk.bold(adminUrl)]);
+
+    console.log(`${addressTable.toString()}`);
+    console.log();
+  }
+
+  logStartupMessage() {
+    this.logStats();
+
+    console.log(chalk.bold('Welcome back!'));
+
+    if (this.config.serveAdminPanel === true) {
+      console.log(chalk.grey('To manage your project 🚀, go to the administration panel at:'));
+      const adminUrl = getAbsoluteAdminUrl(strapi.config);
+      console.log(chalk.bold(adminUrl));
+      console.log();
+    }
+
+    console.log(chalk.grey('To access the server ⚡️, go to:'));
+    const serverUrl = getAbsoluteServerUrl(strapi.config);
+    console.log(chalk.bold(serverUrl));
+    console.log();
+  }
+
+  initServer() {
+    this.server = http.createServer(this.handleRequest.bind(this));
     // handle port in use cleanly
     this.server.on('error', err => {
       if (err.code === 'EADDRINUSE') {
-        return this.stopWithError(
-          `The port ${err.port} is already used by another application.`
-        );
+        return this.stopWithError(`The port ${err.port} is already used by another application.`);
       }
 
       this.log.error(err);
@@ -234,29 +185,127 @@ class Strapi extends EventEmitter {
     };
   }
 
-  stopWithError(err) {
+  async start(cb) {
+    try {
+      if (!this.isLoaded) {
+        await this.load();
+      }
+
+      this.app.use(this.router.routes()).use(this.router.allowedMethods());
+
+      // Launch server.
+      this.listen(cb);
+    } catch (err) {
+      this.stopWithError(err);
+    }
+  }
+
+  async destroy() {
+    if (_.has(this, 'server.destroy')) {
+      this.server.destroy();
+    }
+
+    await Promise.all(
+      Object.values(this.plugins).map(plugin => {
+        if (_.has(plugin, 'destroy') && typeof plugin.destroy === 'function') {
+          return plugin.destroy();
+        }
+      })
+    );
+
+    if (_.has(this, 'admin')) {
+      await this.admin.destroy();
+    }
+
+    this.eventHub.removeAllListeners();
+
+    if (_.has(this, 'db')) {
+      await this.db.destroy();
+    }
+
+    delete global.strapi;
+  }
+
+  /**
+   * Add behaviors to the server
+   */
+  async listen(cb) {
+    const onListen = async err => {
+      if (err) return this.stopWithError(err);
+
+      // Is the project initialised?
+      const isInitialised = await utils.isInitialised(this);
+
+      // Should the startup message be displayed?
+      const hideStartupMessage = process.env.STRAPI_HIDE_STARTUP_MESSAGE
+        ? process.env.STRAPI_HIDE_STARTUP_MESSAGE === 'true'
+        : false;
+
+      if (hideStartupMessage === false) {
+        if (!isInitialised) {
+          this.logFirstStartupMessage();
+        } else {
+          this.logStartupMessage();
+        }
+      }
+
+      // Emit started event.
+      const databaseClients = _.map(this.config.get('connections'), _.property('settings.client'));
+      await this.telemetry.send('didStartServer', { database: databaseClients });
+
+      if (cb && typeof cb === 'function') {
+        cb();
+      }
+
+      if (
+        (this.config.environment === 'development' &&
+          this.config.get('server.admin.autoOpen', true) !== false) ||
+        !isInitialised
+      ) {
+        await utils.openBrowser.call(this);
+      }
+    };
+
+    const listenSocket = this.config.get('server.socket');
+    const listenErrHandler = err => onListen(err).catch(err => this.stopWithError(err));
+
+    if (listenSocket) {
+      this.server.listen(listenSocket, listenErrHandler);
+    } else {
+      this.server.listen(
+        this.config.get('server.port'),
+        this.config.get('server.host'),
+        listenErrHandler
+      );
+    }
+  }
+
+  stopWithError(err, customMessage) {
     this.log.debug(`⛔️ Server wasn't able to start properly.`);
+    if (customMessage) {
+      this.log.error(customMessage);
+    }
     this.log.error(err);
     return this.stop();
   }
 
-  stop() {
+  stop(exitCode = 1) {
     // Destroy server and available connections.
-    this.server.destroy();
+    if (_.has(this, 'server.destroy')) {
+      this.server.destroy();
+    }
 
     if (this.config.autoReload) {
       process.send('stop');
     }
 
     // Kill process.
-    process.exit(1);
+    process.exit(exitCode);
   }
 
   async load() {
-    await this.enhancer();
-
     this.app.use(async (ctx, next) => {
-      if (ctx.request.url === '/_health' && ctx.request.method === 'HEAD') {
+      if (ctx.request.url === '/_health' && ['HEAD', 'GET'].includes(ctx.request.method)) {
         ctx.set('strapi', 'You are so French!');
         ctx.status = 204;
       } else {
@@ -264,63 +313,65 @@ class Strapi extends EventEmitter {
       }
     });
 
-    const [
-      config,
-      api,
-      admin,
-      plugins,
-      middlewares,
-      hook,
-      extensions,
-      groups,
-    ] = await Promise.all([
-      loadConfig(this),
-      loadApis(this),
-      loadAdmin(this),
-      loadPlugins(this),
-      loadMiddlewares(this),
-      loadHooks(this.config),
-      loadExtensions(this.config),
-      loadGroups(this),
-    ]);
+    const modules = await loadModules(this);
 
-    _.merge(this.config, config);
-
-    this.api = api;
-    this.admin = admin;
-    this.groups = groups;
-    this.plugins = plugins;
-    this.middleware = middlewares;
-    this.hook = hook;
-
-    /**
-     * Handle plugin extensions
-     */
-    // merge extensions config folders
-    _.mergeWith(this.plugins, extensions.merges, (objValue, srcValue, key) => {
-      // concat routes
-      if (_.isArray(srcValue) && _.isArray(objValue) && key === 'routes') {
-        return srcValue.concat(objValue);
-      }
-    });
-    // overwrite plugins with extensions overwrites
-    extensions.overwrites.forEach(({ path, mod }) => {
-      _.assign(_.get(this.plugins, path), mod);
-    });
-
-    // Populate AST with configurations.
+    this.api = modules.api;
+    this.admin = modules.admin;
+    this.components = modules.components;
+    this.plugins = modules.plugins;
+    this.middleware = modules.middlewares;
+    this.hook = modules.hook;
 
     await bootstrap(this);
 
-    // Usage.
-    await utils.usage(this.config);
+    // init webhook runner
+    this.webhookRunner = createWebhookRunner({
+      eventHub: this.eventHub,
+      logger: this.log,
+      configuration: this.config.get('server.webhooks', {}),
+    });
 
     // Init core store
-    initCoreStore(this);
+    this.models['core_store'] = coreStoreModel(this.config);
+    this.models['strapi_webhooks'] = webhookModel(this.config);
+
+    this.db = createDatabaseManager(this);
+    await this.db.initialize();
+
+    this.store = createCoreStore({
+      environment: this.config.environment,
+      db: this.db,
+    });
+
+    this.webhookStore = createWebhookStore({ db: this.db });
+
+    await this.startWebhooks();
+
+    this.entityValidator = entityValidator;
+
+    this.entityService = createEntityService({
+      db: this.db,
+      eventHub: this.eventHub,
+      entityValidator: this.entityValidator,
+    });
+
+    this.telemetry = createTelemetry(this);
 
     // Initialize hooks and middlewares.
     await initializeMiddlewares.call(this);
     await initializeHooks.call(this);
+
+    await this.runBootstrapFunctions();
+    await this.freeze();
+
+    this.isLoaded = true;
+
+    return this;
+  }
+
+  async startWebhooks() {
+    const webhooks = await this.webhookStore.findWebhooks();
+    webhooks.forEach(webhook => this.webhookRunner.add(webhook));
   }
 
   reload() {
@@ -364,138 +415,53 @@ class Strapi extends EventEmitter {
   }
 
   async runBootstrapFunctions() {
-    const timeoutMs = this.config.bootstrapTimeout || 3500;
-    const warnOnTimeout = () =>
-      setTimeout(() => {
-        this.log.warn(
-          `The bootstrap function is taking unusually long to execute (${timeoutMs} miliseconds).`
-        );
-        this.log.warn('Make sure you call it?');
-      }, timeoutMs);
-
-    async function execBootstrap(fn) {
+    const execBootstrap = async fn => {
       if (!fn) return;
 
-      const timer = warnOnTimeout();
-      try {
-        await fn();
-      } finally {
-        clearTimeout(timer);
-      }
-    }
+      return fn();
+    };
 
+    // plugins bootstrap
     const pluginBoostraps = Object.keys(this.plugins).map(plugin => {
-      return execBootstrap(
-        _.get(this.plugins[plugin], 'config.functions.bootstrap')
-      ).catch(err => {
+      return execBootstrap(_.get(this.plugins[plugin], 'config.functions.bootstrap')).catch(err => {
         strapi.log.error(`Bootstrap function in plugin "${plugin}" failed`);
         strapi.log.error(err);
         strapi.stop();
       });
     });
-
     await Promise.all(pluginBoostraps);
 
-    return execBootstrap(_.get(this.config, ['functions', 'bootstrap']));
+    // user bootstrap
+    await execBootstrap(_.get(this.config, ['functions', 'bootstrap']));
+
+    // admin bootstrap : should always run after the others
+    const adminBootstrap = _.get(this.admin.config, 'functions.bootstrap');
+    return execBootstrap(adminBootstrap).catch(err => {
+      strapi.log.error(`Bootstrap function in admin failed`);
+      strapi.log.error(err);
+      strapi.stop();
+    });
   }
 
   async freeze() {
-    const propertiesToNotFreeze = this.propertiesToNotFreeze || [];
-
-    // Remove object from tree.
-    delete this.propertiesToNotFreeze;
-
-    return Object.keys(this)
-      .filter(x => !_.includes(propertiesToNotFreeze, x))
-      .forEach(key => {
-        Object.freeze(this[key]);
-      });
+    Object.freeze(this.config);
+    Object.freeze(this.dir);
+    Object.freeze(this.admin);
+    Object.freeze(this.plugins);
+    Object.freeze(this.api);
   }
 
   getModel(modelKey, plugin) {
-    return plugin === 'admin'
-      ? _.get(strapi.admin, ['models', modelKey], undefined)
-      : _.get(strapi.plugins, [plugin, 'models', modelKey]) ||
-          _.get(strapi, ['models', modelKey]) ||
-          _.get(strapi, ['groups', modelKey]) ||
-          undefined;
+    return this.db.getModel(modelKey, plugin);
   }
 
   /**
    * Binds queries with a specific model
    * @param {string} entity - entity name
    * @param {string} plugin - plugin name or null
-   * @param {Object} queriesMap - a map of orm to queries object factory (defaults to ./core-api/queries)
    */
   query(entity, plugin) {
-    if (!entity) {
-      throw new Error(
-        `You can't call the query method without passing the model's name as a first argument.`
-      );
-    }
-
-    const modelKey = entity.toLowerCase();
-
-    if (this.queryManager.has({ modelKey, plugin })) {
-      return this.queryManager.get({ modelKey, plugin });
-    }
-
-    const model =
-      plugin === 'admin'
-        ? _.get(strapi.admin, ['models', modelKey], undefined)
-        : _.get(strapi.plugins, [plugin, 'models', modelKey]) ||
-          _.get(strapi, ['models', modelKey]) ||
-          _.get(strapi, ['groups', modelKey]) ||
-          undefined;
-
-    if (!model) {
-      throw new Error(`The model ${modelKey} can't be found.`);
-    }
-
-    const connector = model.orm;
-
-    if (!connector) {
-      throw new Error(
-        `Impossible to determine the use ORM for the model ${modelKey}.`
-      );
-    }
-
-    const orm = strapi.hook[model.orm];
-    const query = orm.load.queries({ model, modelKey, strapi: this });
-    Object.assign(query, {
-      orm: connector,
-      primaryKey: model.primaryKey,
-      associations: model.associations,
-    });
-
-    // custom queries made easy
-    Object.assign(query, {
-      get model() {
-        return model;
-      },
-      custom(mapping) {
-        if (typeof mapping === 'function') {
-          return mapping.bind(query, { model, modelKey });
-        }
-
-        if (!mapping[connector]) {
-          throw new Error(`Missing mapping for orm ${connector}`);
-        }
-
-        if (typeof mapping[connector] !== 'function') {
-          throw new Error(
-            `Custom queries must be functions received ${typeof mapping[
-              connector
-            ]}`
-          );
-        }
-
-        return mapping[connector].call(query, { model, modelKey });
-      },
-    });
-
-    this.queryManager.set({ modelKey, plugin }, query);
-    return query;
+    return this.db.query(entity, plugin);
   }
 }
 

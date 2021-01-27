@@ -3,12 +3,15 @@ module.exports = {
     userCustomRoute: String
   `,
   resolver: {
+    Mutation: {
+      updateUser: {
+        description: 'Updates a user',
+        policies: ['customPolicy'],
+      },
+    },
     Query: {
       userCustomRoute: {
-        resolver: {
-          plugin: 'users-permissions',
-          handler: 'UsersPermissions.customRoute',
-        },
+        resolver: 'plugins::users-permissions.userspermissions.customRoute',
       },
     },
   },
